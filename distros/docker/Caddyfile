@@ -1,0 +1,51 @@
+# Octo-STS Caddyfile
+#
+# TLS Mode Configuration:
+#   - TLS_MODE=on (default): Caddy manages TLS with Let's Encrypt
+#   - TLS_MODE=off: Disable TLS for edge termination (ngrok, load balancer, etc.)
+#
+# When TLS_MODE=off, Caddy listens on HTTP only and expects TLS to be
+# terminated upstream by ngrok, a cloud load balancer, or similar.
+
+{
+	# Global options
+	admin off
+
+	# Email for Let's Encrypt notifications (only used when TLS_MODE=on)
+	email {$TLS_EMAIL:}
+}
+
+# Main site configuration
+{$STS_DOMAIN} {
+	# TLS configuration based on TLS_MODE environment variable
+	@tlsOn expression `{$TLS_MODE:on}` == `on`
+	@tlsOff expression `{$TLS_MODE:on}` == `off`
+
+	# When TLS is off, we're behind a reverse proxy doing TLS termination
+	tls {$TLS_EMAIL:} {
+		# Let's Encrypt is used by default when TLS_MODE=on
+	}
+
+	# Route webhook requests to the webhook service
+	handle /webhook* {
+		reverse_proxy webhook:8080
+	}
+
+	# Route all other requests to the STS exchange service
+	handle {
+		reverse_proxy sts:8080
+	}
+
+	# Logging
+	log {
+		output stdout
+		format console
+	}
+}
+
+# HTTP to HTTPS redirect (only active when TLS_MODE=on)
+# When TLS_MODE=off, the main site block handles HTTP directly
+http://{$STS_DOMAIN} {
+	@tlsOn expression `{$TLS_MODE:on}` == `on`
+	redir @tlsOn https://{host}{uri} permanent
+}

@@ -1,0 +1,90 @@
+services:
+  # Caddy reverse proxy with automatic HTTPS via Let's Encrypt
+  # Set TLS_MODE=off to disable Caddy TLS when using edge termination (ngrok, LB, etc.)
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - STS_DOMAIN=${STS_DOMAIN}
+      - TLS_MODE=${TLS_MODE:-on}
+      - TLS_EMAIL=${TLS_EMAIL:-}
+    depends_on:
+      - sts
+      - webhook
+    networks:
+      - octo-sts
+
+  # STS Exchange Service - handles OIDC-to-GitHub token exchanges
+  sts:
+    build:
+      context: ../..
+      dockerfile: distros/docker/Dockerfile
+    restart: unless-stopped
+    command: ["/usr/local/bin/sts"]
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - STS_DOMAIN=${STS_DOMAIN}
+      - METRICS=${METRICS:-false}
+      # Key configuration - use ONE of the following:
+      # Option 1: PEM key as environment variable
+      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      # Option 2: PEM key file (mount via volume)
+      - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
+      # Option 3: Cloud KMS (requires appropriate credentials)
+      - KMS_KEY=${KMS_KEY:-}
+      # Optional: CloudEvents endpoint for observability
+      - EVENT_INGRESS_URI=${EVENT_INGRESS_URI:-}
+    volumes:
+      # Mount the private key file if using file-based key
+      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
+    networks:
+      - octo-sts
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Webhook Validator Service - validates trust policy changes in PRs
+  webhook:
+    build:
+      context: ../..
+      dockerfile: distros/docker/Dockerfile
+    restart: unless-stopped
+    command: ["/usr/local/bin/webhook"]
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_WEBHOOK_ORGANIZATION_FILTER=${GITHUB_WEBHOOK_ORGANIZATION_FILTER:-}
+      - METRICS=${METRICS:-false}
+      # Key configuration - use ONE of the following (same as STS):
+      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
+      - KMS_KEY=${KMS_KEY:-}
+    volumes:
+      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
+    networks:
+      - octo-sts
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  octo-sts:
+    driver: bridge
