@@ -1,8 +1,8 @@
 # Octo-STS Docker Image
-# Builds both the STS exchange service and webhook validator into a single image
+# Builds the STS exchange service, webhook validator, and app installer into a single image
 
-# Build stage
-FROM golang:1.24-alpine AS builder
+# Build stage for octo-sts-app binaries
+FROM golang:1.25rc1-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -19,6 +19,23 @@ COPY octo-sts-app/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/sts ./cmd/app
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/webhook ./cmd/webhook
 
+# Build stage for app-installer
+FROM golang:1.25rc1-alpine AS installer-builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+
+# Copy go mod files first for better caching
+COPY app-installer/go.mod ./
+RUN go mod download
+
+# Copy the source code
+COPY app-installer/ ./
+
+# Build the app-installer binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/app-installer ./cmd/app-installer
+
 # Runtime stage
 FROM alpine:3.21
 
@@ -28,9 +45,10 @@ RUN apk add --no-cache ca-certificates wget
 RUN addgroup -g 1000 octo-sts && \
     adduser -u 1000 -G octo-sts -s /bin/sh -D octo-sts
 
-# Copy binaries from builder
+# Copy binaries from builders
 COPY --from=builder /out/sts /usr/local/bin/sts
 COPY --from=builder /out/webhook /usr/local/bin/webhook
+COPY --from=installer-builder /out/app-installer /usr/local/bin/app-installer
 
 # Default to non-root user
 USER octo-sts
@@ -38,5 +56,5 @@ USER octo-sts
 # Default port
 EXPOSE 8080
 
-# Default entrypoint - override with command in docker-compose
-ENTRYPOINT ["/usr/local/bin/sts"]
+# No default entrypoint - specify command in docker-compose for each service
+# This allows flexible selection of which binary to run (sts, webhook, app-installer)

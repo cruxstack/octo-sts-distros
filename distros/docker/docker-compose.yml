@@ -5,7 +5,7 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "${HTTP_PORT:-80}:80"
+      - "${HTTP_PORT:-9000}:80"
       - "${HTTPS_PORT:-443}:443"
       - "${HTTPS_PORT:-443}:443/udp"
     volumes:
@@ -14,7 +14,7 @@ services:
       - caddy_config:/config
     environment:
       - STS_DOMAIN=${STS_DOMAIN}
-      - TLS_MODE=${TLS_MODE:-on}
+      - TLS_MODE=${TLS_MODE:-off}
       - TLS_EMAIL=${TLS_EMAIL:-}
     depends_on:
       - sts
@@ -80,6 +80,30 @@ services:
       - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
     networks:
       - octo-sts
+
+  # App Installer - one-time setup to create the GitHub App via manifest flow
+  # Run with: docker-compose --profile setup up app-installer
+  # After successful setup, credentials are saved directly to .env
+  app-installer:
+    build:
+      context: ../..
+      dockerfile: distros/docker/Dockerfile
+    command: ["/usr/local/bin/app-installer"]
+    ports:
+      - "${INSTALLER_PORT:-9000}:8080"
+    environment:
+      - PORT=8080
+      - REDIRECT_URL=${INSTALLER_REDIRECT_URL:-http://localhost:9000}
+      - WEBHOOK_URL=${INSTALLER_WEBHOOK_URL:-}
+      - STORAGE_DIR=/config/.env
+      - GITHUB_URL=${GITHUB_URL:-https://github.com}
+      - GITHUB_ORG=${GITHUB_ORG}
+    volumes:
+      - ./.env:/config/.env
+    networks:
+      - octo-sts
+    profiles:
+      - setup
 
 volumes:
   caddy_data:

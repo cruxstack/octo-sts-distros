@@ -1,0 +1,5 @@
+# Secrets directory - contains GitHub App credentials from manifest installer
+secrets/
+
+# Environment file with actual credentials
+.env
