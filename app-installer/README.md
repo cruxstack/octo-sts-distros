@@ -21,14 +21,13 @@ see the
 ## Usage
 
 ```bash
-# From the distros/docker directory
 docker-compose --profile setup up app-installer
 
 # Visit http://localhost:9000
 # 1. Enter your webhook URL (e.g., https://sts.example.com/webhook)
 # 2. Click "Create GitHub App"
 # 3. Name the app on GitHub and click create
-# 4. Credentials are saved to ./secrets/
+# 4. Credentials are saved
 
 # Stop the installer
 docker-compose --profile setup down

@@ -1,19 +1,12 @@
-# Octo-STS Caddyfile
-#
-# Default configuration expects TLS to be terminated upstream (ngrok, load balancer, etc.)
-# For production with Let's Encrypt, remove the "http://" prefix from the site address.
-
 {
 	admin off
 }
 
 http://{$STS_DOMAIN} {
-	# Route webhook requests to the webhook service
 	handle /webhook* {
 		reverse_proxy webhook:8080
 	}
 
-	# Route all other requests to the STS exchange service
 	handle {
 		reverse_proxy sts:8080
 	}

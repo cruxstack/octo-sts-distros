@@ -1,6 +1,5 @@
 services:
-  # Caddy reverse proxy with automatic HTTPS via Let's Encrypt
-  # Set TLS_MODE=off to disable Caddy TLS when using edge termination (ngrok, LB, etc.)
+  # reverse proxy
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -22,7 +21,7 @@ services:
     networks:
       - octo-sts
 
-  # STS Exchange Service - handles OIDC-to-GitHub token exchanges
+  # octo-sts app's sts service
   sts:
     build:
       context: ../..
@@ -36,17 +35,11 @@ services:
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - STS_DOMAIN=${STS_DOMAIN}
       - METRICS=${METRICS:-false}
-      # Key configuration - use ONE of the following:
-      # Option 1: PEM key as environment variable
       - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
-      # Option 2: PEM key file (mount via volume)
       - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
-      # Option 3: Cloud KMS (requires appropriate credentials)
       - KMS_KEY=${KMS_KEY:-}
-      # Optional: CloudEvents endpoint for observability
       - EVENT_INGRESS_URI=${EVENT_INGRESS_URI:-}
     volumes:
-      # Mount the private key file if using file-based key
       - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
     networks:
       - octo-sts
@@ -57,7 +50,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # Webhook Validator Service - validates trust policy changes in PRs
+  # octo-sts app's github webhook handler
   webhook:
     build:
       context: ../..
@@ -72,7 +65,6 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - GITHUB_WEBHOOK_ORGANIZATION_FILTER=${GITHUB_WEBHOOK_ORGANIZATION_FILTER:-}
       - METRICS=${METRICS:-false}
-      # Key configuration - use ONE of the following (same as STS):
       - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
       - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
       - KMS_KEY=${KMS_KEY:-}
@@ -81,9 +73,7 @@ services:
     networks:
       - octo-sts
 
-  # App Installer - one-time setup to create the GitHub App via manifest flow
-  # Run with: docker-compose --profile setup up app-installer
-  # After successful setup, credentials are saved directly to .env
+  # github app register and installer (optional, convience)
   app-installer:
     build:
       context: ../..
