@@ -5,10 +5,15 @@ package appstore
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 func TestLocalFileStore_Save(t *testing.T) {
@@ -419,6 +424,479 @@ func TestFormatEnvLine(t *testing.T) {
 		got := formatEnvLine(tt.key, tt.value)
 		if got != tt.expected {
 			t.Errorf("formatEnvLine(%q, %q) = %q, want %q", tt.key, tt.value, got, tt.expected)
+		}
+	}
+}
+
+// Mock SSM Client for testing
+
+type mockSSMClient struct {
+	calls            []putParameterCall
+	putParameterFunc func(ctx context.Context, params *ssm.PutParameterInput,
+		optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error)
+}
+
+type putParameterCall struct {
+	Name      string
+	Value     string
+	Type      string
+	Overwrite bool
+	KeyID     *string
+	Tags      []types.Tag
+}
+
+func (m *mockSSMClient) PutParameter(ctx context.Context, params *ssm.PutParameterInput,
+	optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error) {
+	// Record the call
+	call := putParameterCall{
+		Name:      aws.ToString(params.Name),
+		Value:     aws.ToString(params.Value),
+		Type:      string(params.Type),
+		Overwrite: aws.ToBool(params.Overwrite),
+		KeyID:     params.KeyId,
+		Tags:      params.Tags,
+	}
+	m.calls = append(m.calls, call)
+
+	// Use custom function if provided
+	if m.putParameterFunc != nil {
+		return m.putParameterFunc(ctx, params, optFns...)
+	}
+
+	// Default success response
+	return &ssm.PutParameterOutput{
+		Version: 1,
+	}, nil
+}
+
+func (m *mockSSMClient) getCall(paramName string) *putParameterCall {
+	for _, call := range m.calls {
+		if strings.HasSuffix(call.Name, paramName) {
+			return &call
+		}
+	}
+	return nil
+}
+
+// AWSSSMStore Tests
+
+func TestAWSSSMStore_Save_Success(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		AppSlug:       "test-app",
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+		STSDomain:     "sts.example.com",
+		HTMLURL:       "https://github.com/apps/test-app",
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify all 6 parameters were created (including STS_DOMAIN)
+	if len(mockClient.calls) != 6 {
+		t.Errorf("Expected 6 PutParameter calls, got %d", len(mockClient.calls))
+	}
+
+	// Verify each parameter
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{EnvGitHubAppID, "12345"},
+		{EnvGitHubWebhookSecret, "webhook-secret"},
+		{EnvGitHubClientID, "Iv1.abc123"},
+		{EnvGitHubClientSecret, "secret123"},
+		{EnvAppSecretCert, "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"},
+		{EnvSTSDomain, "sts.example.com"},
+	}
+
+	for _, tt := range tests {
+		call := mockClient.getCall(tt.name)
+		if call == nil {
+			t.Errorf("Parameter %s was not created", tt.name)
+			continue
+		}
+
+		// Verify parameter name includes prefix
+		expectedName := "/octo-sts/app/" + tt.name
+		if call.Name != expectedName {
+			t.Errorf("Parameter name = %q, want %q", call.Name, expectedName)
+		}
+
+		// Verify value
+		if call.Value != tt.expected {
+			t.Errorf("Parameter %s value = %q, want %q", tt.name, call.Value, tt.expected)
+		}
+
+		// Verify type is SecureString
+		if call.Type != string(types.ParameterTypeSecureString) {
+			t.Errorf("Parameter %s type = %q, want %q", tt.name, call.Type, types.ParameterTypeSecureString)
+		}
+
+		// Verify overwrite is true
+		if !call.Overwrite {
+			t.Errorf("Parameter %s overwrite = false, want true", tt.name)
+		}
+
+		// Verify no KMS key (using default)
+		if call.KeyID != nil {
+			t.Errorf("Parameter %s has KMS key %q, expected nil (default key)", tt.name, *call.KeyID)
+		}
+
+		// Verify no tags
+		if len(call.Tags) > 0 {
+			t.Errorf("Parameter %s has tags, expected none", tt.name)
+		}
+	}
+}
+
+func TestAWSSSMStore_Save_WithoutSTSDomain(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+		// STSDomain is empty
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify only 5 parameters were created (excluding STS_DOMAIN)
+	if len(mockClient.calls) != 5 {
+		t.Errorf("Expected 5 PutParameter calls, got %d", len(mockClient.calls))
+	}
+
+	// Verify STS_DOMAIN was NOT created
+	if call := mockClient.getCall(EnvSTSDomain); call != nil {
+		t.Error("STS_DOMAIN parameter should not be created when empty")
+	}
+}
+
+func TestAWSSSMStore_Save_WithCustomKMSKey(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	kmsKeyID := "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+		WithKMSKey(kmsKeyID),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify all parameters use the custom KMS key
+	for _, call := range mockClient.calls {
+		if call.KeyID == nil {
+			t.Errorf("Parameter %s missing KMS key ID", call.Name)
+			continue
+		}
+		if *call.KeyID != kmsKeyID {
+			t.Errorf("Parameter %s KMS key = %q, want %q", call.Name, *call.KeyID, kmsKeyID)
+		}
+	}
+}
+
+func TestAWSSSMStore_Save_WithTags(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	tags := map[string]string{
+		"Environment": "production",
+		"Application": "octo-sts",
+		"ManagedBy":   "terraform",
+	}
+
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+		WithTags(tags),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify all parameters have the tags
+	for _, call := range mockClient.calls {
+		if len(call.Tags) != len(tags) {
+			t.Errorf("Parameter %s has %d tags, want %d", call.Name, len(call.Tags), len(tags))
+			continue
+		}
+
+		// Convert tags to map for easier verification
+		callTags := make(map[string]string)
+		for _, tag := range call.Tags {
+			callTags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
+		}
+
+		// Verify each tag
+		for key, expectedValue := range tags {
+			if actualValue, ok := callTags[key]; !ok {
+				t.Errorf("Parameter %s missing tag %s", call.Name, key)
+			} else if actualValue != expectedValue {
+				t.Errorf("Parameter %s tag %s = %q, want %q", call.Name, key, actualValue, expectedValue)
+			}
+		}
+	}
+}
+
+func TestAWSSSMStore_Save_PrefixNormalization(t *testing.T) {
+	tests := []struct {
+		name           string
+		prefix         string
+		expectedPrefix string
+	}{
+		{"with trailing slash", "/octo-sts/app/", "/octo-sts/app/"},
+		{"without trailing slash", "/octo-sts/app", "/octo-sts/app/"},
+		{"simple path with slash", "/app/", "/app/"},
+		{"simple path without slash", "/app", "/app/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := &mockSSMClient{}
+			store, err := NewAWSSSMStore(tt.prefix,
+				WithSSMClient(mockClient),
+			)
+			if err != nil {
+				t.Fatalf("NewAWSSSMStore() error = %v", err)
+			}
+
+			creds := &AppCredentials{
+				AppID:         12345,
+				ClientID:      "Iv1.abc123",
+				ClientSecret:  "secret123",
+				WebhookSecret: "webhook-secret",
+				PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+			}
+
+			if err := store.Save(context.Background(), creds); err != nil {
+				t.Fatalf("Save() error = %v", err)
+			}
+
+			// Verify all parameters have the normalized prefix
+			for _, call := range mockClient.calls {
+				if !strings.HasPrefix(call.Name, tt.expectedPrefix) {
+					t.Errorf("Parameter %s does not have expected prefix %s", call.Name, tt.expectedPrefix)
+				}
+			}
+		})
+	}
+}
+
+func TestAWSSSMStore_Save_MultilinePrivateKey(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	multilinePEM := `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN
+OPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR
+STUVWXYZ1234567890abcdefghijklmnopqrstuvwxyz
+-----END RSA PRIVATE KEY-----`
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    multilinePEM,
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify private key is stored with original newlines (no escaping)
+	call := mockClient.getCall(EnvAppSecretCert)
+	if call == nil {
+		t.Fatal("APP_SECRET_CERTIFICATE_ENV_VAR parameter not created")
+	}
+
+	if call.Value != multilinePEM {
+		t.Errorf("Private key stored incorrectly.\nGot:\n%s\n\nWant:\n%s", call.Value, multilinePEM)
+	}
+}
+
+func TestAWSSSMStore_Save_ErrorHandling(t *testing.T) {
+	// Mock client that fails on the 3rd call
+	callCount := 0
+	mockClient := &mockSSMClient{
+		putParameterFunc: func(ctx context.Context, params *ssm.PutParameterInput,
+			optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error) {
+			callCount++
+			if callCount == 3 {
+				return nil, fmt.Errorf("simulated AWS error")
+			}
+			return &ssm.PutParameterOutput{Version: 1}, nil
+		},
+	}
+
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+	}
+
+	err = store.Save(context.Background(), creds)
+	if err == nil {
+		t.Fatal("Save() should have returned an error")
+	}
+
+	if !strings.Contains(err.Error(), "failed to save parameter") {
+		t.Errorf("Error message should contain 'failed to save parameter', got: %v", err)
+	}
+
+	// Verify operation stopped immediately after error (should be exactly 3 calls)
+	if callCount != 3 {
+		t.Errorf("Expected exactly 3 calls before stopping, got %d", callCount)
+	}
+}
+
+func TestNewAWSSSMStore_EmptyPrefix(t *testing.T) {
+	_, err := NewAWSSSMStore("")
+	if err == nil {
+		t.Fatal("NewAWSSSMStore() should return error for empty prefix")
+	}
+
+	if !strings.Contains(err.Error(), "prefix cannot be empty") {
+		t.Errorf("Error message should mention empty prefix, got: %v", err)
+	}
+}
+
+func TestNewAWSSSMStore_WithOptions(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	kmsKey := "arn:aws:kms:us-east-1:123456789012:key/test"
+	tags := map[string]string{
+		"Environment": "test",
+	}
+
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+		WithKMSKey(kmsKey),
+		WithTags(tags),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	// Verify options were applied
+	if store.KMSKeyID != kmsKey {
+		t.Errorf("KMSKeyID = %q, want %q", store.KMSKeyID, kmsKey)
+	}
+
+	if len(store.Tags) != len(tags) {
+		t.Errorf("Tags length = %d, want %d", len(store.Tags), len(tags))
+	}
+
+	if store.Tags["Environment"] != "test" {
+		t.Errorf("Tags[Environment] = %q, want 'test'", store.Tags["Environment"])
+	}
+
+	if store.ssmClient != mockClient {
+		t.Error("SSM client was not set correctly")
+	}
+}
+
+func TestAWSSSMStore_Save_AllCredentialFields(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	store, err := NewAWSSSMStore("/test/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	creds := &AppCredentials{
+		AppID:         99999,
+		AppSlug:       "my-app",
+		ClientID:      "Iv1.xyz789",
+		ClientSecret:  "super-secret",
+		WebhookSecret: "hook-secret-123",
+		PrivateKey:    "-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----",
+		HTMLURL:       "https://github.com/apps/my-app",
+		STSDomain:     "sts.production.com",
+		HookConfig:    HookConfig{URL: "https://sts.production.com/webhook"},
+	}
+
+	if err := store.Save(context.Background(), creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Verify the actual values stored
+	expectedValues := map[string]string{
+		EnvGitHubAppID:         "99999",
+		EnvGitHubWebhookSecret: "hook-secret-123",
+		EnvGitHubClientID:      "Iv1.xyz789",
+		EnvGitHubClientSecret:  "super-secret",
+		EnvAppSecretCert:       "-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----",
+		EnvSTSDomain:           "sts.production.com",
+	}
+
+	for name, expectedValue := range expectedValues {
+		call := mockClient.getCall(name)
+		if call == nil {
+			t.Errorf("Parameter %s was not created", name)
+			continue
+		}
+		if call.Value != expectedValue {
+			t.Errorf("Parameter %s = %q, want %q", name, call.Value, expectedValue)
 		}
 	}
 }

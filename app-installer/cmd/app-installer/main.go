@@ -16,10 +16,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -54,24 +51,30 @@ const (
 
 // Config holds the application configuration from environment variables.
 type Config struct {
-	Port        string
-	RedirectURL string
-	WebhookURL  string
-	StorageDir  string
-	StorageMode string
-	GitHubURL   string
-	GitHubOrg   string
+	Port                  string
+	RedirectURL           string
+	WebhookURL            string
+	StorageDir            string
+	StorageMode           string
+	GitHubURL             string
+	GitHubOrg             string
+	AWSSSMParameterPrefix string
+	AWSSSMKMSKeyID        string
+	AWSSSMTags            string
 }
 
 func loadConfig() *Config {
 	cfg := &Config{
-		Port:        getEnv("PORT", "8080"),
-		RedirectURL: getEnv("REDIRECT_URL", ""),
-		WebhookURL:  getEnv("WEBHOOK_URL", ""),
-		StorageDir:  getEnv("STORAGE_DIR", "./.env"),
-		StorageMode: getEnv("STORAGE_MODE", "envfile"),
-		GitHubURL:   getEnv("GITHUB_URL", "https://github.com"),
-		GitHubOrg:   os.Getenv("GITHUB_ORG"),
+		Port:                  getEnv("PORT", "8080"),
+		RedirectURL:           getEnv("REDIRECT_URL", ""),
+		WebhookURL:            getEnv("WEBHOOK_URL", ""),
+		StorageDir:            getEnv("STORAGE_DIR", "./.env"),
+		StorageMode:           getEnv("STORAGE_MODE", "envfile"),
+		GitHubURL:             getEnv("GITHUB_URL", "https://github.com"),
+		GitHubOrg:             os.Getenv("GITHUB_ORG"),
+		AWSSSMParameterPrefix: os.Getenv("AWS_SSM_PARAMETER_PREFIX"),
+		AWSSSMKMSKeyID:        os.Getenv("AWS_SSM_KMS_KEY_ID"),
+		AWSSSMTags:            os.Getenv("AWS_SSM_TAGS"),
 	}
 	return cfg
 }
@@ -447,8 +450,36 @@ func main() {
 	case "envfile":
 		store = appstore.NewLocalEnvFileStore(cfg.StorageDir)
 		log.Printf("[config] using env file storage: path=%s", cfg.StorageDir)
+	case "aws-ssm":
+		if cfg.AWSSSMParameterPrefix == "" {
+			log.Fatal("[config] AWS_SSM_PARAMETER_PREFIX is required when using aws-ssm storage mode")
+		}
+
+		// Build store options
+		var opts []appstore.SSMStoreOption
+		if cfg.AWSSSMKMSKeyID != "" {
+			opts = append(opts, appstore.WithKMSKey(cfg.AWSSSMKMSKeyID))
+			log.Printf("[config] using custom KMS key: key_id=%s", cfg.AWSSSMKMSKeyID)
+		}
+
+		// Parse tags from JSON if provided
+		if cfg.AWSSSMTags != "" {
+			var tags map[string]string
+			if err := json.Unmarshal([]byte(cfg.AWSSSMTags), &tags); err != nil {
+				log.Fatalf("[config] failed to parse AWS_SSM_TAGS as JSON: %v", err)
+			}
+			opts = append(opts, appstore.WithTags(tags))
+			log.Printf("[config] using AWS tags: tags=%v", tags)
+		}
+
+		var err error
+		store, err = appstore.NewAWSSSMStore(cfg.AWSSSMParameterPrefix, opts...)
+		if err != nil {
+			log.Fatalf("[config] failed to create AWS SSM store: %v", err)
+		}
+		log.Printf("[config] using AWS SSM Parameter Store: prefix=%s", cfg.AWSSSMParameterPrefix)
 	default:
-		log.Fatalf("Unknown STORAGE_MODE: %s (expected 'envfile' or 'files')", cfg.StorageMode)
+		log.Fatalf("Unknown STORAGE_MODE: %s (expected 'envfile', 'files', or 'aws-ssm')", cfg.StorageMode)
 	}
 
 	server := NewServer(cfg, store)

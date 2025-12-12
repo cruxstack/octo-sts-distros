@@ -36,13 +36,17 @@ docker-compose --profile setup down
 
 ## Configuration
 
-| Environment Variable | Description                              | Default                |
-|----------------------|------------------------------------------|------------------------|
-| `PORT`               | Server port                              | `8080`                 |
-| `REDIRECT_URL`       | Public URL for GitHub OAuth redirect    | `http://localhost:8080`|
-| `WEBHOOK_URL`        | Pre-configure webhook URL (optional)     |                        |
-| `STORAGE_DIR`        | Directory to save credentials            | `./secrets`            |
-| `GITHUB_URL`         | GitHub URL (for GHES)                    | `https://github.com`   |
+| Environment Variable         | Description                                     | Default                |
+|------------------------------|-------------------------------------------------|------------------------|
+| `PORT`                       | Server port                                     | `8080`                 |
+| `REDIRECT_URL`               | Public URL for GitHub OAuth redirect            | `http://localhost:8080`|
+| `WEBHOOK_URL`                | Pre-configure webhook URL (optional)            |                        |
+| `STORAGE_MODE`               | Storage backend (`envfile`, `files`, `aws-ssm`) | `envfile`              |
+| `STORAGE_DIR`                | Directory to save credentials (local modes)     | `./secrets`            |
+| `GITHUB_URL`                 | GitHub URL (for GHES)                           | `https://github.com`   |
+| `AWS_SSM_PARAMETER_PREFIX`   | SSM parameter prefix (required for `aws-ssm`)   |                        |
+| `AWS_SSM_KMS_KEY_ID`         | Custom KMS key ARN (optional)                   | AWS managed key        |
+| `AWS_SSM_TAGS`               | JSON object of tags (optional)                  |                        |
 
 ## Saved Credentials
 
@@ -89,11 +93,20 @@ go test ./...
 ### Storage Backends
 
 The `Store` interface in `pkg/appstore` allows pluggable storage backends.
-Current implementation uses local filesystem. Future backends could include:
 
-- AWS Systems Manager Parameter Store
-- AWS Secrets Manager
-- HashiCorp Vault
-- Kubernetes Secrets
+**Available backends:**
+- Local File Store (default) - saves to individual files
+- Local Environment File Store - saves to .env file
+- AWS SSM Parameter Store - saves to encrypted AWS SSM parameters
 
-See `pkg/appstore/store.go` for the interface definition.
+**Environment Variables:**
+
+AWS SSM Parameter Store backend can be configured via:
+
+| Environment Variable         | Description                              | Default                |
+|------------------------------|------------------------------------------|------------------------|
+| `AWS_SSM_PARAMETER_PREFIX`   | SSM parameter prefix/namespace           | Required               |
+| `AWS_SSM_KMS_KEY_ID`         | Custom KMS key ARN (optional)            | AWS managed key        |
+| `AWS_SSM_TAGS`               | JSON object of tags (optional)           | No tags                |
+
+See `pkg/appstore/` for implementation details and examples.
