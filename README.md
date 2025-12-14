@@ -13,9 +13,28 @@ eliminating the need for long-lived Personal Access Tokens (PATs).
 This repository provides deployment patterns and artifacts for running
 octo-sts.
 
-**Note:** For GCP Cloud Run deployment, please refer to the upstream
-[octo-sts/app repository](https://github.com/octo-sts/app) which includes
-native Cloud Run support.
+## Relationship to `octo-sts/app`
+
+This repository **extends** the upstream [octo-sts/app](https://github.com/octo-sts/app)
+with additional deployment options and quality-of-life improvements. **The
+upstream octo-sts/app works perfectly on its own** - this repository is not
+required.
+
+What this repository adds:
+
+- **Web-based GitHub App installer** - Create your GitHub App via a guided web
+  flow that auto-configures permissions and saves credentials to your chosen
+  backend
+- **Multiple credential storage backends** - Store GitHub App private keys in
+  local files, environment variables, or AWS SSM Parameter Store
+- **AWS Lambda distribution** - Terraform module for serverless deployment on
+  AWS
+- **Docker distribution** - Docker Compose setup for local development with
+  ngrok
+
+If you're deploying to **GCP Cloud Run**, use the upstream
+[octo-sts/app](https://github.com/octo-sts/app) directly - it has native Cloud
+Run support.
 
 ## Distributions
 
