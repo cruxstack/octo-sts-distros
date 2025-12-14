@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,7 +45,7 @@ func (h *webhookHandler) SetHandler(handler http.Handler) {
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
 	port := shared.DefaultPort

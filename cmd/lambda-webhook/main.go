@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/chainguard-dev/clog"
 
 	"github.com/cruxstack/octo-sts-distros/internal/app"
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/cruxstack/octo-sts-distros/internal/ssmresolver"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
 	"github.com/octo-sts/app/pkg/ghtransport"
@@ -23,7 +23,7 @@ var appInstance *app.App
 
 func init() {
 	ctx := context.Background()
-	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
 	// Resolve SSM ARNs with retry (helps during deployments)
@@ -71,7 +71,7 @@ func init() {
 }
 
 func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 
 	appReq := app.Request{
 		Type:    app.RequestTypeHTTP,

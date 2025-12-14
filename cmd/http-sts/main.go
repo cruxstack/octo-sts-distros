@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -79,7 +78,7 @@ func (h *stsHandler) SetSTS(s *sts.STS) {
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
 	port := shared.DefaultPort

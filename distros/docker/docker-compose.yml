@@ -31,6 +31,7 @@ services:
     expose:
       - "8080"
     environment:
+      - LOG_FORMAT=text
       - PORT=8080
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - STS_DOMAIN=${STS_DOMAIN}
@@ -60,6 +61,7 @@ services:
     expose:
       - "8080"
     environment:
+      - LOG_FORMAT=text
       - PORT=8080
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}

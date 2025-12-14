@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"os"
 
@@ -29,7 +28,7 @@ var handler *httpadapter.HandlerAdapterV2
 
 func init() {
 	ctx := context.Background()
-	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
 	// Resolve SSM ARNs with retry (helps during deployments)
