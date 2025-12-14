@@ -1,4 +1,4 @@
-// Copyright 2025 Octo-STS
+// Copyright 2025 CruxStack
 // SPDX-License-Identifier: MIT
 
 // Package installer provides a web-based installer for creating GitHub Apps using

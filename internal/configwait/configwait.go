@@ -1,4 +1,4 @@
-// Copyright 2025 Octo-STS
+// Copyright 2025 CruxStack
 // SPDX-License-Identifier: MIT
 
 // Package configwait provides utilities for waiting on configuration availability

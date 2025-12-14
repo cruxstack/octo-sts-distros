@@ -1,4 +1,4 @@
-// Copyright 2025 Octo-STS
+// Copyright 2025 CruxStack
 // SPDX-License-Identifier: MIT
 
 package configstore
