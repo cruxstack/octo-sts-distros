@@ -6,19 +6,22 @@ This distribution deploys [Octo-STS](https://github.com/octo-sts/app) to AWS Lam
 
 ```
 aws-lambda/
-├── cmd/                    # Lambda wrapper binaries (Go)
-│   ├── lambda-sts/         # STS service Lambda entrypoint
-│   └── lambda-webhook/     # Webhook service Lambda entrypoint
-├── pkg/                    # Shared Go packages
-│   └── ssmresolver/        # SSM ARN resolution utility
-├── assets/                 # Build assets
-│   └── lambda-functions/   # Dockerfile for Lambda builds
 ├── terraform/              # Terraform module
+│   ├── assets/
+│   │   └── lambda-functions/  # Dockerfile for Lambda builds
+│   ├── examples/
 │   ├── main.tf
 │   ├── variables.tf
-│   ├── outputs.tf
-│   └── examples/
-└── go.mod                  # Go module definition
+│   └── outputs.tf
+└── README.md
+
+# Lambda code is located in the repository root:
+cmd/
+├── lambda-sts/             # STS service Lambda entrypoint
+└── lambda-webhook/         # Webhook service Lambda entrypoint
+
+internal/
+└── ssmresolver/            # SSM ARN resolution utility
 ```
 
 ## Features

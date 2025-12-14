@@ -17,7 +17,7 @@ services:
       - TLS_EMAIL=${TLS_EMAIL:-}
     depends_on:
       - sts
-      - webhook
+      - app
     networks:
       - octo-sts
 
@@ -50,13 +50,13 @@ services:
       retries: 3
       start_period: 10s
 
-  # octo-sts app's github webhook handler
-  webhook:
+  # octo-sts app's github webhook handler (also serves installer at /setup when enabled)
+  app:
     build:
       context: ../..
       dockerfile: distros/docker/Dockerfile
     restart: unless-stopped
-    command: ["/usr/local/bin/webhook"]
+    command: ["/usr/local/bin/app"]
     expose:
       - "8080"
     environment:
@@ -68,32 +68,23 @@ services:
       - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
       - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
       - KMS_KEY=${KMS_KEY:-}
-    volumes:
-      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
-    networks:
-      - octo-sts
-
-  # github app register and installer (optional, convience)
-  app-installer:
-    build:
-      context: ../..
-      dockerfile: distros/docker/Dockerfile
-    command: ["/usr/local/bin/app-installer"]
-    ports:
-      - "${INSTALLER_PORT:-9000}:8080"
-    environment:
-      - PORT=8080
-      - REDIRECT_URL=${INSTALLER_REDIRECT_URL:-http://localhost:9000}
-      - WEBHOOK_URL=${INSTALLER_WEBHOOK_URL:-}
+      # Installer configuration (enabled via INSTALLER_ENABLED=true)
+      - INSTALLER_ENABLED=${INSTALLER_ENABLED:-false}
+      - STORAGE_MODE=${STORAGE_MODE:-envfile}
       - STORAGE_DIR=/config/.env
       - GITHUB_URL=${GITHUB_URL:-https://github.com}
-      - GITHUB_ORG=${GITHUB_ORG}
+      - GITHUB_ORG=${GITHUB_ORG:-}
     volumes:
+      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
       - ./.env:/config/.env
     networks:
       - octo-sts
-    profiles:
-      - setup
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   caddy_data:

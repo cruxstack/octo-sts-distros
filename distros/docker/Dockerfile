@@ -6,26 +6,25 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /build
 
-COPY octo-sts-app/go.mod octo-sts-app/go.sum ./
+# Copy go.mod files for dependency caching
+COPY cmd/go.mod cmd/go.sum* ./cmd/
+COPY internal/go.mod internal/go.sum ./internal/
+COPY octo-sts-app/go.mod octo-sts-app/go.sum ./octo-sts-app/
+
+# Download dependencies
+WORKDIR /build/cmd
 RUN go mod download
 
-COPY octo-sts-app/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/sts ./cmd/app
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/webhook ./cmd/webhook
-
-# ------------------------------------------------------- builder: installer ---
-
-FROM golang:1.25rc1-alpine AS installer-builder
-
-RUN apk add --no-cache git ca-certificates
-
+# Copy source code
 WORKDIR /build
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY octo-sts-app/ ./octo-sts-app/
 
-COPY app-installer/go.mod ./
-RUN go mod download
-
-COPY app-installer/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/app-installer ./cmd/app-installer
+# Build the binaries
+WORKDIR /build/cmd
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/sts ./http-sts
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/app ./http-app
 
 # ------------------------------------------------------------------ runtime ---
 
@@ -38,10 +37,8 @@ RUN addgroup -g 1000 octo-sts && \
     adduser -u 1000 -G octo-sts -s /bin/sh -D octo-sts
 
 COPY --from=builder /out/sts /usr/local/bin/sts
-COPY --from=builder /out/webhook /usr/local/bin/webhook
-COPY --from=installer-builder /out/app-installer /usr/local/bin/app-installer
+COPY --from=builder /out/app /usr/local/bin/app
 
 USER octo-sts
 
 EXPOSE 8080
-

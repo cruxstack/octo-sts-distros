@@ -25,21 +25,22 @@ RUN if [ "${APP_VERSION}" = "latest" ]; then \
       git clone --depth 1 --branch ${APP_VERSION} ${APP_REPO} octo-sts-app; \
     fi
 
-WORKDIR /build/distros/distros/aws-lambda
+WORKDIR /build/distros/cmd
 
 # Update go.mod to point to the cloned app repo and sync dependencies
-RUN go mod edit -replace github.com/octo-sts/app=../../../octo-sts-app \
+RUN go mod edit -replace github.com/octo-sts/app=../octo-sts-app \
+    && go mod edit -replace github.com/cruxstack/octo-sts-distros/internal=../internal \
     && go mod tidy
 
 RUN GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
     -ldflags="-s -w" \
     -o /out/bootstrap-sts \
-    ./cmd/lambda-sts
+    ./lambda-sts
 
 RUN GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
     -ldflags="-s -w" \
     -o /out/bootstrap-webhook \
-    ./cmd/lambda-webhook
+    ./lambda-webhook
 
 # ------------------------------------------------------------- package: sts ---
 
