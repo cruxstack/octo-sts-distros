@@ -83,7 +83,9 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Write status code and body
 	w.WriteHeader(resp.StatusCode)
 	if resp.Body != nil {
-		w.Write(resp.Body)
+		if _, err := w.Write(resp.Body); err != nil {
+			clog.FromContext(r.Context()).Errorf("failed to write response body: %v", err)
+		}
 	}
 }
 

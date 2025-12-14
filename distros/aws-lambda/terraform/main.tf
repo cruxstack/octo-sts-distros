@@ -154,6 +154,7 @@ resource "aws_cloudwatch_log_group" "sts" {
 
   name              = "/aws/lambda/${module.this.id}-sts"
   retention_in_days = var.lambda_log_retention_days
+  kms_key_id        = var.kms_key_arn
   tags              = module.this.tags
 }
 
@@ -162,6 +163,7 @@ resource "aws_cloudwatch_log_group" "webhook" {
 
   name              = "/aws/lambda/${module.this.id}-webhook"
   retention_in_days = var.lambda_log_retention_days
+  kms_key_id        = var.kms_key_arn
   tags              = module.this.tags
 }
 
@@ -170,6 +172,7 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
 
   name              = "/aws/apigateway/${module.this.id}"
   retention_in_days = var.lambda_log_retention_days
+  kms_key_id        = var.kms_key_arn
   tags              = module.this.tags
 }
 
@@ -183,10 +186,10 @@ resource "aws_apigatewayv2_api" "this" {
   description   = "API Gateway for Octo-STS - Security Token Service for GitHub"
 
   cors_configuration {
-    allow_origins = ["*"]
-    allow_methods = ["POST", "GET", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization", "X-Hub-Signature-256", "X-GitHub-Event", "X-GitHub-Delivery"]
-    max_age       = 300
+    allow_origins = var.api_gateway_cors_config.allow_origins
+    allow_methods = var.api_gateway_cors_config.allow_methods
+    allow_headers = var.api_gateway_cors_config.allow_headers
+    max_age       = var.api_gateway_cors_config.max_age
   }
 
   tags = module.this.tags

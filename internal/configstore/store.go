@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
 
 const (
@@ -114,9 +116,5 @@ func InstallerEnabled() bool {
 	return v == "true" || v == "1" || v == "yes"
 }
 
-func getEnvDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
+// getEnvDefault is an alias to the shared implementation.
+var getEnvDefault = shared.GetEnvDefault

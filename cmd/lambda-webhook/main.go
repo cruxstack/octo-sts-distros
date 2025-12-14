@@ -5,8 +5,8 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -24,22 +24,26 @@ var appInstance *app.App
 func init() {
 	ctx := context.Background()
 	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	log := clog.FromContext(ctx)
 
 	// Resolve SSM ARNs in environment variables with retry support
 	// This helps during deployments where SSM parameters might not be immediately available
 	retryCfg := ssmresolver.NewRetryConfigFromEnv()
 	if err := ssmresolver.ResolveEnvironmentWithRetry(ctx, retryCfg); err != nil {
-		log.Fatalf("failed to resolve SSM parameters: %v", err)
+		log.Errorf("failed to resolve SSM parameters: %v", err)
+		os.Exit(1)
 	}
 
 	baseCfg, err := envConfig.BaseConfig()
 	if err != nil {
-		log.Fatalf("failed to process env var: %v", err)
+		log.Errorf("failed to process env var: %v", err)
+		os.Exit(1)
 	}
 
 	webhookConfig, err := envConfig.WebhookConfig()
 	if err != nil {
-		log.Fatalf("failed to process env var: %v", err)
+		log.Errorf("failed to process env var: %v", err)
+		os.Exit(1)
 	}
 
 	// Disable metrics for Lambda (GCP-specific)
@@ -48,7 +52,8 @@ func init() {
 	// Create GitHub App transport (nil KMS client - not using GCP KMS in Lambda)
 	atr, err := ghtransport.New(ctx, baseCfg, nil)
 	if err != nil {
-		log.Fatalf("error creating GitHub App transport: %v", err)
+		log.Errorf("error creating GitHub App transport: %v", err)
+		os.Exit(1)
 	}
 
 	// Parse organization filter
@@ -65,7 +70,8 @@ func init() {
 		Organizations:  orgs,
 	})
 	if err != nil {
-		log.Fatalf("failed to create app: %v", err)
+		log.Errorf("failed to create app: %v", err)
+		os.Exit(1)
 	}
 }
 

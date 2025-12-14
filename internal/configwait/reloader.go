@@ -5,11 +5,12 @@ package configwait
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/chainguard-dev/clog"
 )
 
 // ReloadFunc is called when a reload is triggered.
@@ -45,6 +46,7 @@ func NewReloader(ctx context.Context, gate *ReadyGate, reloadFunc ReloadFunc) *R
 // The returned channel is closed when the reloader stops (context cancelled).
 func (r *Reloader) Start() <-chan struct{} {
 	done := make(chan struct{})
+	log := clog.FromContext(r.ctx)
 
 	// Set up SIGHUP handler
 	sighupCh := make(chan os.Signal, 1)
@@ -59,10 +61,10 @@ func (r *Reloader) Start() <-chan struct{} {
 			case <-r.ctx.Done():
 				return
 			case <-sighupCh:
-				log.Printf("[reloader] received SIGHUP, triggering reload")
+				log.Infof("[reloader] received SIGHUP, triggering reload")
 				r.doReload()
 			case <-r.reloadCh:
-				log.Printf("[reloader] programmatic reload triggered")
+				log.Infof("[reloader] programmatic reload triggered")
 				r.doReload()
 			}
 		}
@@ -75,21 +77,25 @@ func (r *Reloader) Start() <-chan struct{} {
 // If a reload is already in progress, this call is a no-op.
 // This is safe to call from any goroutine.
 func (r *Reloader) Trigger() {
+	log := clog.FromContext(r.ctx)
+
 	select {
 	case r.reloadCh <- struct{}{}:
 		// Reload queued
 	default:
 		// Reload already pending
-		log.Printf("[reloader] reload already pending, ignoring trigger")
+		log.Infof("[reloader] reload already pending, ignoring trigger")
 	}
 }
 
 // doReload performs the actual reload operation.
 func (r *Reloader) doReload() {
+	log := clog.FromContext(r.ctx)
+
 	r.mu.Lock()
 	if r.reloading {
 		r.mu.Unlock()
-		log.Printf("[reloader] reload already in progress, skipping")
+		log.Infof("[reloader] reload already in progress, skipping")
 		return
 	}
 	r.reloading = true
@@ -101,14 +107,14 @@ func (r *Reloader) doReload() {
 		r.mu.Unlock()
 	}()
 
-	log.Printf("[reloader] starting configuration reload...")
+	log.Infof("[reloader] starting configuration reload...")
 
 	if err := r.reloadFunc(r.ctx); err != nil {
-		log.Printf("[reloader] reload failed: %v", err)
+		log.Errorf("[reloader] reload failed: %v", err)
 		return
 	}
 
-	log.Printf("[reloader] configuration reloaded successfully")
+	log.Infof("[reloader] configuration reloaded successfully")
 }
 
 // Global reloader instance for use by the installer
@@ -136,6 +142,8 @@ func TriggerReload() {
 	if r != nil {
 		r.Trigger()
 	} else {
-		log.Printf("[reloader] no global reloader set, cannot trigger reload")
+		// Note: We can't use clog here as we don't have a context
+		// This is an edge case that only happens if TriggerReload is called before
+		// the main application sets up the reloader, which shouldn't happen in normal use.
 	}
 }

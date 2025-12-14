@@ -8,13 +8,15 @@ package configwait
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/chainguard-dev/clog"
 )
 
 // Environment variable names for configwait configuration.
@@ -49,8 +51,7 @@ func NewConfigFromEnv() Config {
 	}
 
 	if v := os.Getenv(EnvMaxRetries); v != "" {
-		var n int
-		if _, err := parseEnvInt(v, &n); err == nil && n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.MaxRetries = n
 		}
 	}
@@ -64,29 +65,6 @@ func NewConfigFromEnv() Config {
 	return cfg
 }
 
-// parseEnvInt parses an environment variable as an integer.
-func parseEnvInt(s string, dst *int) (int, error) {
-	var n int
-	_, err := parseEnvIntWith(s, &n)
-	if err != nil {
-		return 0, err
-	}
-	*dst = n
-	return n, nil
-}
-
-func parseEnvIntWith(s string, dst *int) (int, error) {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, nil
-		}
-		n = n*10 + int(c-'0')
-	}
-	*dst = n
-	return n, nil
-}
-
 // LoadFunc is called repeatedly until it succeeds or max retries is reached.
 // It should attempt to load configuration and return nil on success.
 type LoadFunc func(ctx context.Context) error
@@ -94,12 +72,13 @@ type LoadFunc func(ctx context.Context) error
 // Wait blocks until the load function succeeds or max retries is reached.
 // It logs retry attempts and returns the last error on failure.
 func Wait(ctx context.Context, cfg Config, load LoadFunc) error {
+	log := clog.FromContext(ctx)
 	var lastErr error
 
 	for attempt := 1; attempt <= cfg.MaxRetries; attempt++ {
 		if err := load(ctx); err != nil {
 			lastErr = err
-			log.Printf("[configwait] attempt %d/%d failed: %v", attempt, cfg.MaxRetries, err)
+			log.Warnf("[configwait] attempt %d/%d failed: %v", attempt, cfg.MaxRetries, err)
 
 			if attempt < cfg.MaxRetries {
 				select {
@@ -111,7 +90,7 @@ func Wait(ctx context.Context, cfg Config, load LoadFunc) error {
 			}
 		} else {
 			if attempt > 1 {
-				log.Printf("[configwait] configuration loaded successfully after %d attempts", attempt)
+				log.Infof("[configwait] configuration loaded successfully after %d attempts", attempt)
 			}
 			return nil
 		}
@@ -186,20 +165,20 @@ func (rg *ReadyGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Handler not ready yet, return 503
-		rg.serveUnavailable(w, "service starting up")
+		rg.serveUnavailable(w, r, "service starting up")
 		return
 	}
 
 	// For non-allowed paths, check readiness
 	if !rg.ready.Load() {
-		rg.serveUnavailable(w, "service not ready, configuration loading")
+		rg.serveUnavailable(w, r, "service not ready, configuration loading")
 		return
 	}
 
 	// Service is ready, pass through
 	h := rg.getHandler()
 	if h == nil {
-		rg.serveUnavailable(w, "service starting up")
+		rg.serveUnavailable(w, r, "service starting up")
 		return
 	}
 	h.ServeHTTP(w, r)
@@ -225,12 +204,16 @@ func (rg *ReadyGate) getHandler() http.Handler {
 }
 
 // serveUnavailable writes a 503 Service Unavailable response.
-func (rg *ReadyGate) serveUnavailable(w http.ResponseWriter, message string) {
+func (rg *ReadyGate) serveUnavailable(w http.ResponseWriter, r *http.Request, message string) {
+	log := clog.FromContext(r.Context())
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", "5")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"error":   "service_unavailable",
 		"message": message,
-	})
+	}); err != nil {
+		log.Errorf("[configwait] failed to write unavailable response: %v", err)
+	}
 }

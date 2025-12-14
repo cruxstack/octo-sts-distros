@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+dist/
+tmp/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local development
+.local/
+
+# Documentation (not needed in image)
+*.md
+docs/
+
+# Test artifacts
+coverage/
+*.test
+*.out

@@ -46,6 +46,11 @@ variable "lambda_config" {
     condition     = var.lambda_config.timeout >= 1 && var.lambda_config.timeout <= 900
     error_message = "Lambda timeout must be between 1 and 900 seconds."
   }
+
+  validation {
+    condition     = contains(["arm64", "x86_64"], var.lambda_config.architecture)
+    error_message = "Lambda architecture must be 'arm64' or 'x86_64'."
+  }
 }
 
 variable "lambda_log_retention_days" {
@@ -116,6 +121,23 @@ variable "api_gateway_config" {
     stage_name = optional(string, "$default")
   })
   default = {}
+}
+
+variable "api_gateway_cors_config" {
+  description = "CORS configuration for API Gateway. Set allow_origins to restrict cross-origin access."
+  type = object({
+    allow_origins = optional(list(string), ["*"])
+    allow_methods = optional(list(string), ["POST", "GET", "OPTIONS"])
+    allow_headers = optional(list(string), ["Content-Type", "Authorization", "X-Hub-Signature-256", "X-GitHub-Event", "X-GitHub-Delivery"])
+    max_age       = optional(number, 300)
+  })
+  default = {}
+}
+
+variable "kms_key_arn" {
+  description = "KMS key ARN for encrypting CloudWatch Logs. If not provided, AWS managed keys are used."
+  type        = string
+  default     = null
 }
 
 # --------------------------------------------------------------------- ssm ---

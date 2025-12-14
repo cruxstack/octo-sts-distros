@@ -5,48 +5,28 @@ package app
 
 import (
 	"net/http"
-	"strings"
+
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
 
-// RequestType identifies the type of incoming request.
-type RequestType string
+// Re-export shared types for package users.
+type (
+	// RequestType identifies the type of incoming request.
+	RequestType = shared.RequestType
+	// Request represents a runtime-agnostic HTTP request.
+	Request = shared.Request
+	// Response represents a runtime-agnostic HTTP response.
+	Response = shared.Response
+)
 
+// Re-export shared constants.
 const (
 	// RequestTypeHTTP represents a standard HTTP request.
-	RequestTypeHTTP RequestType = "http"
+	RequestTypeHTTP = shared.RequestTypeHTTP
 )
 
-// Request represents a runtime-agnostic HTTP request.
-// This abstraction allows the same request handling logic to work
-// with both standard HTTP servers and AWS API Gateway v2 with Lambda.
-type Request struct {
-	// Type identifies the request type.
-	Type RequestType
-
-	// Method is the HTTP method (GET, POST, etc.).
-	Method string
-
-	// Path is the request path after any base path stripping.
-	Path string
-
-	// Headers contains request headers with lowercase keys for consistent access.
-	Headers map[string]string
-
-	// Body contains the raw request body.
-	Body []byte
-}
-
-// Response represents a runtime-agnostic HTTP response.
-type Response struct {
-	// StatusCode is the HTTP status code.
-	StatusCode int
-
-	// Headers contains response headers.
-	Headers map[string]string
-
-	// Body contains the raw response body.
-	Body []byte
-}
+// NormalizeHeaders converts header keys to lowercase for consistent access.
+var NormalizeHeaders = shared.NormalizeHeaders
 
 // NewResponse creates a new Response with the given status code and body.
 func NewResponse(statusCode int, body []byte) Response {
@@ -58,6 +38,7 @@ func NewResponse(statusCode int, body []byte) Response {
 }
 
 // ErrorResponse creates an error response with the given status code and message.
+// For the app package, errors are returned as plain text.
 func ErrorResponse(statusCode int, message string) Response {
 	return Response{
 		StatusCode: statusCode,
@@ -85,14 +66,4 @@ func AcceptedResponse() Response {
 		Headers:    make(map[string]string),
 		Body:       nil,
 	}
-}
-
-// NormalizeHeaders converts header keys to lowercase for consistent access
-// across different runtime environments.
-func NormalizeHeaders(headers map[string]string) map[string]string {
-	normalized := make(map[string]string, len(headers))
-	for k, v := range headers {
-		normalized[strings.ToLower(k)] = v
-	}
-	return normalized
 }

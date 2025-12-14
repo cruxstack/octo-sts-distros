@@ -18,14 +18,16 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/chainguard-dev/clog"
+
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
 	"github.com/cruxstack/octo-sts-distros/internal/configwait"
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
 
 //go:embed templates/*
@@ -110,12 +112,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // handleIndex serves the main page with the manifest form.
 func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := clog.FromContext(ctx)
+
 	// Determine redirect URL: use configured value, or derive from request
 	// Note: This is the base URL (without path). The manifest will append /setup/callback
 	redirectURL := h.config.RedirectURL
 	if redirectURL == "" {
-		redirectURL = getBaseURL(r)
-		log.Printf("[installer] auto-detected redirect url: url=%s host=%s forwarded_host=%s",
+		redirectURL = getBaseURL(ctx, r)
+		log.Infof("[installer] auto-detected redirect url: url=%s host=%s forwarded_host=%s",
 			redirectURL, r.Host, r.Header.Get("X-Forwarded-Host"))
 	}
 
@@ -125,13 +130,13 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		webhookURL = r.FormValue("webhook_url")
 		if webhookURL == "" {
 			// Auto-derive webhook URL from request host
-			webhookURL = getBaseURL(r) + "/webhook"
-			log.Printf("[installer] auto-detected webhook url: url=%s", webhookURL)
+			webhookURL = getBaseURL(ctx, r) + "/webhook"
+			log.Infof("[installer] auto-detected webhook url: url=%s", webhookURL)
 		}
 	}
 
 	manifest := buildManifest(redirectURL, webhookURL)
-	log.Printf("[installer] manifest redirect_url: %s", manifest.RedirectURL)
+	log.Infof("[installer] manifest redirect_url: %s", manifest.RedirectURL)
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		http.Error(w, "Failed to generate manifest", http.StatusInternalServerError)
@@ -165,17 +170,22 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := indexTemplate.Execute(&buf, data); err != nil {
-		log.Printf("[installer] failed to render index template: %v", err)
+		log.Errorf("[installer] failed to render index template: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	buf.WriteTo(w)
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Errorf("[installer] failed to write response: %v", err)
+	}
 }
 
 // handleCallback handles the GitHub redirect after app creation.
 func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := clog.FromContext(ctx)
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		http.Error(w, "Missing code parameter", http.StatusBadRequest)
@@ -196,9 +206,9 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Exchange the code for credentials
-	creds, err := h.exchangeCode(r.Context(), code)
+	creds, err := h.exchangeCode(ctx, code)
 	if err != nil {
-		log.Printf("[installer] failed to exchange code: %v", err)
+		log.Errorf("[installer] failed to exchange code: %v", err)
 		http.Error(w, "Failed to exchange code", http.StatusInternalServerError)
 		return
 	}
@@ -207,16 +217,16 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	creds.STSDomain = stsDomain
 
 	// Save credentials using the store
-	if err := h.config.Store.Save(r.Context(), creds); err != nil {
-		log.Printf("[installer] failed to save credentials: %v", err)
+	if err := h.config.Store.Save(ctx, creds); err != nil {
+		log.Errorf("[installer] failed to save credentials: %v", err)
 		http.Error(w, "Failed to save credentials", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[installer] successfully created github app: slug=%s app_id=%d", creds.AppSlug, creds.AppID)
+	log.Infof("[installer] successfully created github app: slug=%s app_id=%d", creds.AppSlug, creds.AppID)
 
 	// Trigger configuration reload so services pick up the new credentials
-	log.Printf("[installer] triggering configuration reload")
+	log.Infof("[installer] triggering configuration reload")
 	configwait.TriggerReload()
 
 	// Build installation URL: https://github.com/apps/{slug}/installations/new
@@ -237,13 +247,15 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := successTemplate.Execute(&buf, data); err != nil {
-		log.Printf("[installer] failed to render success template: %v", err)
+		log.Errorf("[installer] failed to render success template: %v", err)
 		http.Error(w, "Failed to render page", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	buf.WriteTo(w)
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Errorf("[installer] failed to write response: %v", err)
+	}
 }
 
 // exchangeCode calls GitHub API to exchange the temporary code for app credentials.
@@ -290,7 +302,9 @@ func (h *Handler) exchangeCode(ctx context.Context, code string) (*configstore.A
 // getBaseURL derives the base URL from the request headers.
 // It uses X-Forwarded-Proto and X-Forwarded-Host if present (common with reverse proxies),
 // otherwise falls back to the Host header with https for non-localhost hosts.
-func getBaseURL(r *http.Request) string {
+func getBaseURL(ctx context.Context, r *http.Request) string {
+	log := clog.FromContext(ctx)
+
 	host := r.Header.Get("X-Forwarded-Host")
 	if host == "" {
 		host = r.Host
@@ -311,14 +325,10 @@ func getBaseURL(r *http.Request) string {
 	}
 
 	baseURL := scheme + "://" + host
-	log.Printf("[installer] getBaseURL: scheme=%s host=%s r.Host=%s X-Forwarded-Proto=%s X-Forwarded-Host=%s result=%s",
+	log.Debugf("[installer] getBaseURL: scheme=%s host=%s r.Host=%s X-Forwarded-Proto=%s X-Forwarded-Host=%s result=%s",
 		scheme, host, r.Host, r.Header.Get("X-Forwarded-Proto"), r.Header.Get("X-Forwarded-Host"), baseURL)
 	return baseURL
 }
 
-func getEnvDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
+// getEnvDefault is an alias to the shared implementation.
+var getEnvDefault = shared.GetEnvDefault

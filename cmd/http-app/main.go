@@ -6,14 +6,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/chainguard-dev/clog"
 
@@ -21,6 +19,7 @@ import (
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
 	"github.com/cruxstack/octo-sts-distros/internal/configwait"
 	"github.com/cruxstack/octo-sts-distros/internal/installer"
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
 	"github.com/octo-sts/app/pkg/ghtransport"
 )
@@ -48,9 +47,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
+	log := clog.FromContext(ctx)
 
 	// Get port early (doesn't depend on GitHub App config)
-	port := 8080
+	port := shared.DefaultPort
 	if p := os.Getenv("PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	}
@@ -75,10 +75,14 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if gate.IsReady() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			if _, err := w.Write([]byte("ok")); err != nil {
+				clog.FromContext(r.Context()).Errorf("failed to write health response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("not ready"))
+			if _, err := w.Write([]byte("not ready")); err != nil {
+				clog.FromContext(r.Context()).Errorf("failed to write health response: %v", err)
+			}
 		}
 	})
 
@@ -90,7 +94,8 @@ func main() {
 	if installerEnabled {
 		store, err := configstore.NewFromEnv()
 		if err != nil {
-			log.Fatalf("failed to create config store: %v", err)
+			log.Errorf("failed to create config store: %v", err)
+			os.Exit(1)
 		}
 
 		installerCfg := installer.NewConfigFromEnv()
@@ -98,7 +103,8 @@ func main() {
 
 		installerHandler, err := installer.New(installerCfg)
 		if err != nil {
-			log.Fatalf("failed to create installer handler: %v", err)
+			log.Errorf("failed to create installer handler: %v", err)
+			os.Exit(1)
 		}
 
 		// Register installer routes
@@ -106,7 +112,7 @@ func main() {
 		mux.Handle("/setup/", installerHandler)
 		mux.Handle("/callback", installerHandler) // GitHub redirects here after app creation
 
-		log.Printf("[config] installer enabled: visit /setup to create GitHub App")
+		log.Infof("[config] installer enabled: visit /setup to create GitHub App")
 	}
 
 	// Set the mux as the gate's handler for allowed paths
@@ -114,16 +120,17 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: shared.DefaultReadHeaderTimeout,
 		Handler:           gate,
 	}
 
-	log.Printf("Starting HTTP server on port %d (waiting for configuration...)", port)
+	log.Infof("Starting HTTP server on port %d (waiting for configuration...)", port)
 
 	// Start server immediately (will return 503 for non-allowed paths until ready)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			log.Errorf("server error: %v", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -181,28 +188,30 @@ func main() {
 		})
 
 		if err != nil {
-			log.Fatalf("failed to load configuration after retries: %v", err)
+			log.Errorf("failed to load configuration after retries: %v", err)
+			os.Exit(1)
 		}
 
-		log.Printf("Configuration loaded, service is ready")
+		log.Infof("Configuration loaded, service is ready")
 
 		// Set up reloader for SIGHUP and programmatic triggers
 		reloader := configwait.NewReloader(ctx, gate, loadConfig)
 		configwait.SetGlobalReloader(reloader)
 		reloader.Start()
 
-		log.Printf("Configuration reloader started (send SIGHUP to reload)")
+		log.Infof("Configuration reloader started (send SIGHUP to reload)")
 	}()
 
 	// Wait for interrupt signal
 	<-ctx.Done()
-	log.Println("Shutting down server...")
+	log.Infof("Shutting down server...")
 
 	// Graceful shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shared.DefaultShutdownTimeout)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server shutdown error: %v", err)
+		log.Errorf("server shutdown error: %v", err)
+		os.Exit(1)
 	}
 }

@@ -155,9 +155,12 @@ module "octo_sts" {
 | `lambda_environment_variables` | Additional environment variables | `map(string)` | `{}` | no |
 | `api_gateway_config` | API Gateway configuration | `object` | `{}` | no |
 | `ssm_parameter_arns` | SSM Parameter ARNs for Lambda access | `list(string)` | `[]` | no |
-| `bot_version` | Octo-STS version to deploy | `string` | `"latest"` | no |
-| `bot_repo` | Octo-STS repository URL | `string` | `"https://github.com/octo-sts/app.git"` | no |
+| `app_version` | Octo-STS version to deploy | `string` | `"latest"` | no |
+| `app_repo` | Octo-STS repository URL | `string` | `"https://github.com/octo-sts/app.git"` | no |
+| `app_force_rebuild_id` | ID to force rebuilding Lambda artifacts | `string` | `""` | no |
 | `distro_repo` | Distros repository URL | `string` | `"https://github.com/cruxstack/octo-sts-distros.git"` | no |
+| `api_gateway_cors_config` | CORS configuration for API Gateway | `object` | `{}` | no |
+| `kms_key_arn` | KMS key ARN for CloudWatch Logs encryption | `string` | `null` | no |
 
 ### GitHub App Config
 
@@ -204,7 +207,18 @@ lambda_config = {
 ```hcl
 api_gateway_config = {
   enabled    = bool    # Enable API Gateway (default: true)
-  stage_name = string  # Stage name (default: "v1")
+  stage_name = string  # Stage name (default: "$default")
+}
+```
+
+### API Gateway CORS Config
+
+```hcl
+api_gateway_cors_config = {
+  allow_origins = list(string)  # Allowed origins (default: ["*"])
+  allow_methods = list(string)  # Allowed HTTP methods (default: ["POST", "GET", "OPTIONS"])
+  allow_headers = list(string)  # Allowed headers (default: ["Content-Type", "Authorization", "X-Hub-Signature-256", "X-GitHub-Event", "X-GitHub-Delivery"])
+  max_age       = number        # Preflight cache max age in seconds (default: 300)
 }
 ```
 
@@ -266,7 +280,7 @@ The Lambda functions are built using Docker during Terraform apply. The build pr
 2. Builds the Lambda wrapper binaries for ARM64
 3. Packages them as ZIP files for Lambda deployment
 
-To force a rebuild, change the `bot_force_rebuild_id` variable.
+To force a rebuild, change the `app_force_rebuild_id` variable.
 
 ## License
 

@@ -44,7 +44,7 @@ RUN GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
 
 # ------------------------------------------------------------- package: sts ---
 
-FROM alpine:latest AS package-sts
+FROM alpine:3.21 AS package-sts
 
 COPY --from=base /out/bootstrap-sts /opt/app/dist/bootstrap
 
@@ -54,7 +54,7 @@ RUN apk add --no-cache zip \
 
 # --------------------------------------------------------- package: webhook ---
 
-FROM alpine:latest AS package-webhook
+FROM alpine:3.21 AS package-webhook
 
 COPY --from=base /out/bootstrap-webhook /opt/app/dist/bootstrap
 

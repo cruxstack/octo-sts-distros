@@ -6,7 +6,6 @@ package ssmresolver
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/chainguard-dev/clog"
 )
 
 // Environment variable names for retry configuration.
@@ -177,19 +177,20 @@ func NewRetryConfigFromEnv() RetryConfig {
 // ResolveEnvironmentWithRetry resolves all environment variables with retry logic.
 // This is useful for Lambda cold starts where SSM parameters might not be immediately available.
 func ResolveEnvironmentWithRetry(ctx context.Context, cfg RetryConfig) error {
+	log := clog.FromContext(ctx)
 	var lastErr error
 
 	for attempt := 1; attempt <= cfg.MaxRetries; attempt++ {
 		err := ResolveEnvironmentWithDefaults(ctx)
 		if err == nil {
 			if attempt > 1 {
-				log.Printf("[ssmresolver] SSM parameters resolved successfully after %d attempts", attempt)
+				log.Infof("[ssmresolver] SSM parameters resolved successfully after %d attempts", attempt)
 			}
 			return nil
 		}
 
 		lastErr = err
-		log.Printf("[ssmresolver] attempt %d/%d failed: %v", attempt, cfg.MaxRetries, err)
+		log.Warnf("[ssmresolver] attempt %d/%d failed: %v", attempt, cfg.MaxRetries, err)
 
 		if attempt < cfg.MaxRetries {
 			select {

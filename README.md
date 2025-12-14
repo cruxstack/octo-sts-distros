@@ -28,18 +28,21 @@ Includes automated GitHub App installer and ngrok integration.
 
 ### AWS Lambda
 
-Serverless deployment using API Gateway v2 and Lambda functions.
+Serverless deployment using API Gateway v2 and Lambda functions with Terraform.
 
-**Status:** 🚧 Planned
+**Status:** Available
+
+**Documentation:** [distros/aws-lambda/README.md](distros/aws-lambda/README.md)
 
 ## Components
 
 ### App Installer
 
 Web-based tool for creating GitHub Apps via the manifest flow. Automatically
-configures all required permissions and saves credentials locally.
+configures all required permissions and saves credentials. The installer is
+integrated into the Docker distribution and accessible at `/setup`.
 
-**Documentation:** [app-installer/README.md](app-installer/README.md)
+See [distros/docker/README.md](distros/docker/README.md) for usage instructions.
 
 ## Documentation
 

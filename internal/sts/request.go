@@ -6,7 +6,8 @@ package sts
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
+
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
 
 // Header keys (lowercase for normalized header access).
@@ -15,45 +16,24 @@ const (
 	HeaderContentType   = "content-type"
 )
 
-// RequestType identifies the type of incoming request.
-type RequestType string
-
-const (
-	// RequestTypeHTTP represents a standard HTTP request.
-	RequestTypeHTTP RequestType = "http"
+// Re-export shared types for package users.
+type (
+	// RequestType identifies the type of incoming request.
+	RequestType = shared.RequestType
+	// Request represents a runtime-agnostic HTTP request.
+	Request = shared.Request
+	// Response represents a runtime-agnostic HTTP response.
+	Response = shared.Response
 )
 
-// Request represents a runtime-agnostic HTTP request.
-// This abstraction allows the same request handling logic to work
-// with both standard HTTP servers and AWS API Gateway v2 with Lambda.
-type Request struct {
-	// Type identifies the request type.
-	Type RequestType
+// Re-export shared constants.
+const (
+	// RequestTypeHTTP represents a standard HTTP request.
+	RequestTypeHTTP = shared.RequestTypeHTTP
+)
 
-	// Method is the HTTP method (GET, POST, etc.).
-	Method string
-
-	// Path is the request path after any base path stripping.
-	Path string
-
-	// Headers contains request headers with lowercase keys for consistent access.
-	Headers map[string]string
-
-	// Body contains the raw request body.
-	Body []byte
-}
-
-// Response represents a runtime-agnostic HTTP response.
-type Response struct {
-	// StatusCode is the HTTP status code.
-	StatusCode int
-
-	// Headers contains response headers.
-	Headers map[string]string
-
-	// Body contains the raw response body.
-	Body []byte
-}
+// NormalizeHeaders converts header keys to lowercase for consistent access.
+var NormalizeHeaders = shared.NormalizeHeaders
 
 // ExchangeRequest represents a token exchange request.
 type ExchangeRequest struct {
@@ -76,16 +56,8 @@ type ErrorResponseBody struct {
 	Error string `json:"error"`
 }
 
-// NewResponse creates a new Response with the given status code and body.
-func NewResponse(statusCode int, body []byte) Response {
-	return Response{
-		StatusCode: statusCode,
-		Headers:    make(map[string]string),
-		Body:       body,
-	}
-}
-
 // ErrorResponse creates an error response with the given status code and message.
+// For the STS package, errors are returned as JSON.
 func ErrorResponse(statusCode int, message string) Response {
 	body, _ := json.Marshal(ErrorResponseBody{Error: message})
 	return Response{
@@ -119,14 +91,4 @@ func OKResponse() Response {
 		Headers:    make(map[string]string),
 		Body:       nil,
 	}
-}
-
-// NormalizeHeaders converts header keys to lowercase for consistent access
-// across different runtime environments.
-func NormalizeHeaders(headers map[string]string) map[string]string {
-	normalized := make(map[string]string, len(headers))
-	for k, v := range headers {
-		normalized[strings.ToLower(k)] = v
-	}
-	return normalized
 }
