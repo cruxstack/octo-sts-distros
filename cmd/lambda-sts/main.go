@@ -32,8 +32,7 @@ func init() {
 	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
 	log := clog.FromContext(ctx)
 
-	// Resolve SSM ARNs in environment variables with retry support
-	// This helps during deployments where SSM parameters might not be immediately available
+	// Resolve SSM ARNs with retry (helps during deployments)
 	retryCfg := ssmresolver.NewRetryConfigFromEnv()
 	if err := ssmresolver.ResolveEnvironmentWithRetry(ctx, retryCfg); err != nil {
 		log.Errorf("failed to resolve SSM parameters: %v", err)
@@ -52,34 +51,27 @@ func init() {
 		os.Exit(1)
 	}
 
-	// Disable metrics for Lambda (GCP-specific)
-	baseCfg.Metrics = false
+	baseCfg.Metrics = false // GCP-specific
 
-	// Create GitHub App transport (nil KMS client - not using GCP KMS in Lambda)
 	atr, err := ghtransport.New(ctx, baseCfg, nil)
 	if err != nil {
 		log.Errorf("error creating GitHub App transport: %v", err)
 		os.Exit(1)
 	}
 
-	// Create duplex server for gRPC-gateway HTTP handling
-	// Port doesn't matter for Lambda, just need the mux
 	d := duplex.New(
 		shared.DefaultPort,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 
-	// Register the STS service (metrics disabled)
 	pboidc.RegisterSecurityTokenServiceServer(d.Server,
 		octosts.NewSecurityTokenServiceServer(atr, nil, appConfig.Domain, false))
 
-	// Register the HTTP gateway handler
 	if err := d.RegisterHandler(ctx, pboidc.RegisterSecurityTokenServiceHandlerFromEndpoint); err != nil {
 		log.Errorf("failed to register gateway endpoint: %v", err)
 		os.Exit(1)
 	}
 
-	// Add root handler for documentation redirect
 	if err := d.MUX.HandlePath(http.MethodGet, "/", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
 		w.Header().Set("Content-Type", "application/json")
 		s := `{"msg": "please check documentation for usage: https://github.com/octo-sts/app"}`
@@ -92,7 +84,6 @@ func init() {
 		os.Exit(1)
 	}
 
-	// Wrap with Lambda HTTP adapter (API Gateway v2 payload format)
 	handler = httpadapter.NewV2(d.MUX)
 }
 

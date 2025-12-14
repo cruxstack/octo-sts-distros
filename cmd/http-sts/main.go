@@ -38,7 +38,6 @@ func (h *stsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
@@ -46,13 +45,11 @@ func (h *stsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	// Convert http.Request headers to map[string]string
 	headers := make(map[string]string)
 	for k := range r.Header {
 		headers[strings.ToLower(k)] = r.Header.Get(k)
 	}
 
-	// Create sts.Request
 	req := sts.Request{
 		Type:    sts.RequestTypeHTTP,
 		Method:  r.Method,
@@ -61,15 +58,12 @@ func (h *stsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Body:    body,
 	}
 
-	// Handle request
 	resp := stsInstance.HandleRequest(r.Context(), req)
 
-	// Write response headers
 	for k, v := range resp.Headers {
 		w.Header().Set(k, v)
 	}
 
-	// Write status code and body
 	w.WriteHeader(resp.StatusCode)
 	if resp.Body != nil {
 		if _, err := w.Write(resp.Body); err != nil {
@@ -88,22 +82,15 @@ func main() {
 	ctx = clog.WithLogger(ctx, clog.New(slog.Default().Handler()))
 	log := clog.FromContext(ctx)
 
-	// Get port early (doesn't depend on GitHub App config)
 	port := shared.DefaultPort
 	if p := os.Getenv("PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &port)
 	}
 
-	// Create ready gate with healthz always allowed
 	gate := configwait.NewReadyGate(nil, []string{"/healthz"})
-
-	// Create HTTP mux
 	mux := http.NewServeMux()
-
-	// Create STS handler wrapper for hot-swapping
 	stsHandler := &stsHandler{}
 
-	// Register health check endpoint (always available)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if gate.IsReady() {
 			w.WriteHeader(http.StatusOK)
@@ -118,10 +105,7 @@ func main() {
 		}
 	})
 
-	// Register STS handler (delegates to the atomic handler)
 	mux.Handle("/", stsHandler)
-
-	// Set the mux as the gate's handler for allowed paths
 	gate.SetHandler(mux)
 
 	srv := &http.Server{
@@ -132,7 +116,7 @@ func main() {
 
 	log.Infof("Starting HTTP server on port %d (waiting for configuration...)", port)
 
-	// Start server immediately (will return 503 until ready)
+	// Start server (returns 503 until ready)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("server error: %v", err)
@@ -140,8 +124,7 @@ func main() {
 		}
 	}()
 
-	// loadConfig loads configuration and creates the STS instance.
-	// It can be called multiple times to reload configuration.
+	// loadConfig loads configuration and creates the STS instance (supports reload).
 	loadConfig := func(ctx context.Context) error {
 		baseCfg, err := envConfig.BaseConfig()
 		if err != nil {
@@ -153,13 +136,11 @@ func main() {
 			return fmt.Errorf("app config: %w", err)
 		}
 
-		// Create GitHub App transport
 		atr, err := ghtransport.New(ctx, baseCfg, nil)
 		if err != nil {
 			return fmt.Errorf("error creating GitHub App transport: %w", err)
 		}
 
-		// Create STS instance
 		stsInstance, err := sts.New(atr, sts.Config{
 			Domain: appConfig.Domain,
 		})
@@ -167,16 +148,13 @@ func main() {
 			return fmt.Errorf("failed to create sts: %w", err)
 		}
 
-		// Hot-swap the STS handler
 		stsHandler.SetSTS(stsInstance)
-
-		// Mark as ready (idempotent)
 		gate.SetReady()
 
 		return nil
 	}
 
-	// Load configuration with retries in background
+	// Load config in background with retries
 	go func() {
 		waitCfg := configwait.NewConfigFromEnv()
 
@@ -191,7 +169,6 @@ func main() {
 
 		log.Infof("Configuration loaded, service is ready")
 
-		// Set up reloader for SIGHUP and programmatic triggers
 		reloader := configwait.NewReloader(ctx, gate, loadConfig)
 		configwait.SetGlobalReloader(reloader)
 		reloader.Start()
@@ -199,11 +176,9 @@ func main() {
 		log.Infof("Configuration reloader started (send SIGHUP to reload)")
 	}()
 
-	// Wait for interrupt signal
 	<-ctx.Done()
 	log.Infof("Shutting down server...")
 
-	// Graceful shutdown with timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shared.DefaultShutdownTimeout)
 	defer shutdownCancel()
 

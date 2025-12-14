@@ -22,8 +22,7 @@ const (
 	EnvRetryInterval = "CONFIG_WAIT_RETRY_INTERVAL"
 )
 
-// Default retry configuration values.
-// Lambda init phase has a default timeout of ~10s, so we use shorter intervals.
+// Defaults tuned for Lambda's ~10s init timeout.
 const (
 	DefaultMaxRetries    = 5
 	DefaultRetryInterval = 1 * time.Second
@@ -71,7 +70,6 @@ func ExtractParameterName(arn string) (string, bool) {
 	if len(matches) != 2 {
 		return "", false
 	}
-	// Ensure parameter name starts with /
 	paramName := matches[1]
 	if !strings.HasPrefix(paramName, "/") {
 		paramName = "/" + paramName
@@ -197,7 +195,6 @@ func ResolveEnvironmentWithRetry(ctx context.Context, cfg RetryConfig) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(cfg.RetryInterval):
-				// Continue to next attempt
 			}
 		}
 	}

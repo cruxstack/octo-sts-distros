@@ -40,16 +40,13 @@ type cacheTrustPolicyKey struct {
 	identity string
 }
 
-// HandleRequest is the single entry point for processing all requests.
-// It routes requests based on method and path to the appropriate handler.
+// HandleRequest routes requests to the appropriate handler.
 func (s *STS) HandleRequest(ctx context.Context, req Request) Response {
-	// Strip base path from the request path
 	reqPath := s.stripBasePath(req.Path)
 
 	log := clog.FromContext(ctx)
 	ctx = clog.WithLogger(ctx, log)
 
-	// Route based on method and path
 	switch {
 	case req.Method == http.MethodPost && (reqPath == "/" || reqPath == "" || reqPath == "/sts/exchange"):
 		return s.handleExchange(ctx, req)
@@ -84,7 +81,6 @@ func (s *STS) handleRoot(_ context.Context) Response {
 func (s *STS) handleExchange(ctx context.Context, req Request) Response {
 	log := clog.FromContext(ctx)
 
-	// Parse request body
 	var exchangeReq ExchangeRequest
 	if err := json.Unmarshal(req.Body, &exchangeReq); err != nil {
 		log.Debugf("failed to parse request body: %v", err)
@@ -93,48 +89,39 @@ func (s *STS) handleExchange(ctx context.Context, req Request) Response {
 
 	log.Infof("exchange request: identity=%s, scope=%s", exchangeReq.Identity, exchangeReq.Scope)
 
-	// Extract bearer token from Authorization header
 	auth := req.Headers[HeaderAuthorization]
 	if auth == "" {
 		return ErrorResponse(http.StatusUnauthorized, "authorization header required")
 	}
 	bearer := strings.TrimPrefix(auth, "Bearer ")
 	if bearer == auth {
-		// No "Bearer " prefix found
 		return ErrorResponse(http.StatusUnauthorized, "invalid authorization header format")
 	}
 
-	// Validate the Bearer token
 	issuer, err := extractIssuer(bearer)
 	if err != nil {
 		log.Debugf("invalid bearer token: %v", err)
 		return ErrorResponse(http.StatusBadRequest, "invalid bearer token")
 	}
 
-	// Validate issuer format
 	if !oidcvalidate.IsValidIssuer(issuer) {
 		return ErrorResponse(http.StatusBadRequest, "invalid issuer format")
 	}
 
-	// Fetch the provider from the cache or create a new one
 	p, err := provider.Get(ctx, issuer)
 	if err != nil {
 		log.Debugf("unable to fetch or create the provider: %v", err)
 		return ErrorResponse(http.StatusBadRequest, "unable to fetch or create the provider")
 	}
 
-	// Verify the token
-	verifier := p.Verifier(&oidc.Config{
-		// The audience is verified later by the trust policy.
-		SkipClientIDCheck: true,
-	})
+	// Audience is verified later by the trust policy
+	verifier := p.Verifier(&oidc.Config{SkipClientIDCheck: true})
 	tok, err := verifier.Verify(ctx, bearer)
 	if err != nil {
 		log.Debugf("unable to validate token: %v", err)
 		return ErrorResponse(http.StatusUnauthorized, "unable to verify bearer token")
 	}
 
-	// Request validation
 	if exchangeReq.Scope == "" {
 		return ErrorResponse(http.StatusBadRequest, "scope must be provided")
 	}
@@ -142,7 +129,6 @@ func (s *STS) handleExchange(ctx context.Context, req Request) Response {
 		return ErrorResponse(http.StatusBadRequest, "identity must be provided")
 	}
 
-	// Look up installation and trust policy
 	installID, trustPolicy, err := s.lookupInstallAndTrustPolicy(ctx, exchangeReq.Scope, exchangeReq.Identity)
 	if err != nil {
 		log.Debugf("failed to lookup trust policy: %v", err)
@@ -150,14 +136,12 @@ func (s *STS) handleExchange(ctx context.Context, req Request) Response {
 	}
 	log.Infof("trust policy: %#v", trustPolicy)
 
-	// Check the token against the trust policy
 	_, err = trustPolicy.CheckToken(tok, s.domain)
 	if err != nil {
 		log.Warnf("token does not match trust policy: %v", err)
 		return ErrorResponse(http.StatusForbidden, "token does not match trust policy")
 	}
 
-	// Synthesize a token for the requested scope and permissions
 	atr := ghinstallation.NewFromAppsTransport(s.transport, installID)
 	atr.InstallationTokenOptions = &github.InstallationTokenOptions{
 		Repositories: trustPolicy.Repositories,
@@ -203,7 +187,6 @@ func (s *STS) lookupInstallAndTrustPolicy(ctx context.Context, scope, identity s
 		otp.Repositories = []string{repo}
 	}
 
-	// If the repo is .github, then parse with an org policy
 	if repo == ".github" {
 		tp = otp
 	}
@@ -232,7 +215,6 @@ type trustPolicy interface {
 
 // lookupInstall looks up the GitHub App installation ID for the given owner.
 func (s *STS) lookupInstall(ctx context.Context, owner string) (int64, error) {
-	// Check the LRU cache
 	if v, ok := installationIDs.Get(owner); ok {
 		clog.InfoContextf(ctx, "found installation in cache for %s", owner)
 		return v, nil
@@ -242,7 +224,6 @@ func (s *STS) lookupInstall(ctx context.Context, owner string) (int64, error) {
 		Transport: s.transport,
 	})
 
-	// Walk through the pages of installations
 	page := 1
 	for page != 0 {
 		installs, resp, err := client.Apps.ListInstallations(ctx, &github.ListOptions{
@@ -269,13 +250,11 @@ func (s *STS) lookupInstall(ctx context.Context, owner string) (int64, error) {
 // lookupTrustPolicy fetches and parses the trust policy for the given identity.
 func (s *STS) lookupTrustPolicy(ctx context.Context, install int64, trustPolicyKey cacheTrustPolicyKey, tp trustPolicy) error {
 	raw := ""
-	// Check the LRU cache
 	if cachedRawPolicy, ok := trustPolicies.Get(trustPolicyKey); ok {
 		clog.InfoContextf(ctx, "found trust policy in cache for %s", trustPolicyKey)
 		raw = cachedRawPolicy
 	}
 
-	// If not cached, fetch from GitHub API
 	if raw == "" {
 		atr := ghinstallation.NewFromAppsTransport(s.transport, install)
 		atr.InstallationTokenOptions = &github.InstallationTokenOptions{
@@ -284,7 +263,6 @@ func (s *STS) lookupTrustPolicy(ctx context.Context, install int64, trustPolicyK
 				Contents: ptr("read"),
 			},
 		}
-		// Revoke the token after fetching the trust policy
 		defer func() {
 			tok, err := atr.Token(ctx)
 			if err != nil {
@@ -335,15 +313,13 @@ func (s *STS) lookupTrustPolicy(ctx context.Context, install int64, trustPolicyK
 	return nil
 }
 
-// extractIssuer extracts the issuer from a JWT token without full verification.
-// This is used to determine which OIDC provider to use for verification.
+// extractIssuer extracts the issuer claim from a JWT without verification.
 func extractIssuer(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return "", errors.New("invalid JWT format")
 	}
 
-	// Decode the payload (second part)
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return "", fmt.Errorf("failed to decode JWT payload: %w", err)
