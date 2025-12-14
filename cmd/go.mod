@@ -4,12 +4,12 @@ go 1.25
 
 require (
 	chainguard.dev/go-grpc-kit v0.17.15
-	chainguard.dev/sdk v0.1.44
+	chainguard.dev/sdk v0.1.45
 	github.com/aws/aws-lambda-go v1.47.0
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/cruxstack/octo-sts-distros/internal v0.0.0-00010101000000-000000000000
-	github.com/octo-sts/app v0.0.0-00010101000000-000000000000
+	github.com/octo-sts/app v0.5.4
 	google.golang.org/grpc v1.77.0
 )
 
@@ -113,5 +113,3 @@ require (
 
 // Reference the local submodules for development
 replace github.com/cruxstack/octo-sts-distros/internal => ../internal
-
-replace github.com/octo-sts/app => ../octo-sts-app

@@ -14,13 +14,13 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v75 v75.0.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/octo-sts/app v0.0.0-00010101000000-000000000000
+	github.com/octo-sts/app v0.5.4
 	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
 	chainguard.dev/go-grpc-kit v0.17.15 // indirect
-	chainguard.dev/sdk v0.1.44 // indirect
+	chainguard.dev/sdk v0.1.45 // indirect
 	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
@@ -102,7 +102,3 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	k8s.io/apimachinery v0.34.3 // indirect
 )
-
-// Reference the local submodule for development
-// In production builds (via Dockerfile), this will be replaced with the actual repo
-replace github.com/octo-sts/app => ../octo-sts-app

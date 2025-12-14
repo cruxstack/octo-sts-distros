@@ -2,6 +2,9 @@
 
 FROM golang:1.25rc1-alpine AS builder
 
+ARG APP_REPO=https://github.com/octo-sts/app.git
+ARG APP_VERSION=latest
+
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /build
@@ -9,20 +12,30 @@ WORKDIR /build
 # Copy go.mod files for dependency caching
 COPY cmd/go.mod cmd/go.sum* ./cmd/
 COPY internal/go.mod internal/go.sum ./internal/
-COPY octo-sts-app/go.mod octo-sts-app/go.sum ./octo-sts-app/
+
+# Clone the octo-sts/app repo
+RUN if [ "${APP_VERSION}" = "latest" ]; then \
+      git clone --depth 1 ${APP_REPO} octo-sts-app; \
+    else \
+      git clone --depth 1 --branch ${APP_VERSION} ${APP_REPO} octo-sts-app; \
+    fi
 
 # Download dependencies
 WORKDIR /build/cmd
-RUN go mod download
+RUN go mod edit -replace github.com/octo-sts/app=../octo-sts-app \
+    && go mod tidy \
+    && go mod download
 
 # Copy source code
 WORKDIR /build
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY octo-sts-app/ ./octo-sts-app/
+
+# Re-apply replace directive after copying source
+WORKDIR /build/cmd
+RUN go mod edit -replace github.com/octo-sts/app=../octo-sts-app
 
 # Build the binaries
-WORKDIR /build/cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/sts ./http-sts
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/app ./http-app
 

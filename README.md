@@ -52,11 +52,12 @@ configures all required permissions and saves credentials locally.
 
 ```
 .
-├── app-installer/         # GitHub App creation tool
+├── cmd/                   # Application binaries
 ├── distros/               # Deployment distributions
+│   ├── aws-lambda/        # AWS Lambda deployment
 │   └── docker/            # Docker Compose for local development
 ├── docs/                  # Architecture and component documentation
-├── octo-sts-app/          # Git submodule: octo-sts/app source
+├── internal/              # Internal packages
 └── README.md
 ```
 

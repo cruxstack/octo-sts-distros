@@ -389,8 +389,8 @@ func TestWebhookOK(t *testing.T) {
 		got = append(got, opt)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Serve testdata from octo-sts-app/pkg/webhook/testdata
-		path := filepath.Join("..", "..", "octo-sts-app", "pkg", "webhook", "testdata", r.URL.Path)
+		// Serve testdata from local testdata directory
+		path := filepath.Join("testdata", r.URL.Path)
 		f, err := os.Open(path)
 		if err != nil {
 			clog.FromContext(r.Context()).Errorf("%s not found", path)
