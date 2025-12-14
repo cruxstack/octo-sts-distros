@@ -1,8 +1,9 @@
 # Octo-STS Architecture
 
 > **Note:** This document describes the architecture of the upstream
-> octo-sts/app project. For deployment-specific information, see the
-> distribution READMEs in the `distros/` directory.
+> octo-sts/app project. For the most current information, see the
+> [upstream documentation](https://github.com/octo-sts/app). For deployment-specific
+> information, see the distribution READMEs in the `distros/` directory.
 
 This document provides a comprehensive architecture breakdown of the
 octo-sts/app project, a Security Token Service (STS) for GitHub that enables

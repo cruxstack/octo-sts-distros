@@ -1,8 +1,9 @@
 # Octo-STS Component Breakdown
 
 > **Note:** This document describes components from the upstream octo-sts/app
-> project. For information about distribution-specific components
-> (app-installer, Docker setup, etc.), see the respective README files.
+> project. For the most current information, see the
+> [upstream documentation](https://github.com/octo-sts/app). For distribution-specific
+> components, see the respective README files in `distros/`.
 
 This document provides a detailed breakdown of the octo-sts/app components,
 including binaries, packages, and their responsibilities.

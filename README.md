@@ -34,16 +34,6 @@ Serverless deployment using API Gateway v2 and Lambda functions with Terraform.
 
 **Documentation:** [distros/aws-lambda/README.md](distros/aws-lambda/README.md)
 
-## Components
-
-### App Installer
-
-Web-based tool for creating GitHub Apps via the manifest flow. Automatically
-configures all required permissions and saves credentials. The installer is
-integrated into the Docker distribution and accessible at `/setup`.
-
-See [distros/docker/README.md](distros/docker/README.md) for usage instructions.
-
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md) - System design, request flows,
@@ -55,20 +45,18 @@ See [distros/docker/README.md](distros/docker/README.md) for usage instructions.
 
 ```
 .
-├── cmd/                   # Application binaries
+├── cmd/                   # Lambda entrypoints and HTTP wrappers
 ├── distros/               # Deployment distributions
-│   ├── aws-lambda/        # AWS Lambda deployment
+│   ├── aws-lambda/        # AWS Lambda + API Gateway (Terraform)
 │   └── docker/            # Docker Compose for local development
-├── docs/                  # Architecture and component documentation
-├── internal/              # Internal packages
-└── README.md
+└── internal/              # Shared packages (app, sts, configstore)
 ```
 
 ## Quick Links
 
 - [octo-sts/app](https://github.com/octo-sts/app) - Upstream project
-- [Upstream Architecture](https://github.com/octo-sts/app#architecture) - Core
-  STS architecture
+- [Trust Policies & Best Practices](https://github.com/octo-sts/app#setting-up-workload-trust) -
+  Setup guide and security recommendations
 - [Original Blog Post](https://www.chainguard.dev/unchained/the-end-of-github-pats-you-cant-leak-what-you-dont-have) -
   Background on octo-sts
 

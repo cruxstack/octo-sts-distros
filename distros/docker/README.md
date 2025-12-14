@@ -38,7 +38,7 @@ connectivity.
 ```
 
 For detailed architecture information, see the
-[upstream architecture documentation](https://github.com/octo-sts/app#architecture).
+[upstream documentation](https://github.com/octo-sts/app).
 
 ## Setup
 
