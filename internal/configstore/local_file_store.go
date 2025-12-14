@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // LocalFileStore saves credentials as individual files in a directory.
@@ -38,6 +40,19 @@ func (s *LocalFileStore) Save(ctx context.Context, creds *AppCredentials) error 
 		"client-secret":   {content: creds.ClientSecret, mode: 0600},
 	}
 
+	if creds.AppSlug != "" {
+		files["app-slug"] = struct {
+			content string
+			mode    os.FileMode
+		}{content: creds.AppSlug, mode: 0644}
+	}
+	if creds.HTMLURL != "" {
+		files["app-html-url"] = struct {
+			content string
+			mode    os.FileMode
+		}{content: creds.HTMLURL, mode: 0644}
+	}
+
 	for name, file := range files {
 		path := filepath.Join(s.Dir, name)
 		if err := os.WriteFile(path, []byte(file.content), file.mode); err != nil {
@@ -46,4 +61,72 @@ func (s *LocalFileStore) Save(ctx context.Context, creds *AppCredentials) error 
 	}
 
 	return nil
+}
+
+func (s *LocalFileStore) Status(ctx context.Context) (*InstallerStatus, error) {
+	status := &InstallerStatus{}
+
+	appIDBytes, err := os.ReadFile(filepath.Join(s.Dir, "app-id"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return status, nil
+		}
+		return nil, err
+	}
+
+	if id, err := strconv.ParseInt(strings.TrimSpace(string(appIDBytes)), 10, 64); err == nil {
+		status.AppID = id
+	}
+
+	required := []string{"client-id", "client-secret", "webhook-secret", "private-key.pem"}
+	for _, name := range required {
+		if _, err := os.Stat(filepath.Join(s.Dir, name)); err != nil {
+			if os.IsNotExist(err) {
+				return status, nil
+			}
+			return nil, err
+		}
+	}
+	status.Registered = true
+
+	if slug, err := readTrimmedFile(filepath.Join(s.Dir, "app-slug")); err == nil {
+		status.AppSlug = slug
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	if html, err := readTrimmedFile(filepath.Join(s.Dir, "app-html-url")); err == nil {
+		status.HTMLURL = html
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	if _, err := os.Stat(filepath.Join(s.Dir, "installer-disabled")); err == nil {
+		status.InstallerDisabled = true
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	return status, nil
+}
+
+func (s *LocalFileStore) DisableInstaller(ctx context.Context) error {
+	if err := os.MkdirAll(s.Dir, 0700); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", s.Dir, err)
+	}
+
+	path := filepath.Join(s.Dir, "installer-disabled")
+	if err := os.WriteFile(path, []byte("disabled"), 0600); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
+	}
+
+	return nil
+}
+
+func readTrimmedFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
 }

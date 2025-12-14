@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -62,6 +63,12 @@ func (s *LocalEnvFileStore) Save(ctx context.Context, creds *AppCredentials) err
 	existingValues[EnvGitHubClientID] = creds.ClientID
 	existingValues[EnvGitHubClientSecret] = creds.ClientSecret
 	existingValues[EnvAppSecretCert] = singleLinePEM
+	if creds.AppSlug != "" {
+		existingValues[EnvGitHubAppSlug] = creds.AppSlug
+	}
+	if creds.HTMLURL != "" {
+		existingValues[EnvGitHubAppHTMLURL] = creds.HTMLURL
+	}
 
 	if err := writeEnvFile(s.FilePath, existingValues, originalLines); err != nil {
 		return fmt.Errorf("failed to write .env file: %w", err)
@@ -166,4 +173,62 @@ func formatEnvLine(key, value string) string {
 	}
 
 	return fmt.Sprintf("%s=%s", key, value)
+}
+
+func (s *LocalEnvFileStore) Status(ctx context.Context) (*InstallerStatus, error) {
+	values, _, err := parseEnvFile(s.FilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &InstallerStatus{}, nil
+		}
+		return nil, err
+	}
+
+	status := &InstallerStatus{
+		AppSlug: values[EnvGitHubAppSlug],
+		HTMLURL: values[EnvGitHubAppHTMLURL],
+	}
+
+	if idStr := strings.TrimSpace(values[EnvGitHubAppID]); idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			status.AppID = id
+		}
+	}
+
+	status.Registered = hasAllValues(values,
+		EnvGitHubAppID,
+		EnvGitHubWebhookSecret,
+		EnvGitHubClientID,
+		EnvGitHubClientSecret,
+		EnvAppSecretCert,
+	)
+
+	status.InstallerDisabled = isFalseString(values[EnvInstallerEnabled])
+
+	return status, nil
+}
+
+func (s *LocalEnvFileStore) DisableInstaller(ctx context.Context) error {
+	dir := filepath.Dir(s.FilePath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	values, originalLines, err := parseEnvFile(s.FilePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if values == nil {
+		values = make(map[string]string)
+	}
+
+	values[EnvInstallerEnabled] = "false"
+
+	if err := writeEnvFile(s.FilePath, values, originalLines); err != nil {
+		return fmt.Errorf("failed to persist installer flag: %w", err)
+	}
+
+	return nil
 }

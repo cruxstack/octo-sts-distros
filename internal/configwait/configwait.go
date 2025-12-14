@@ -187,6 +187,12 @@ func (rg *ReadyGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // isAllowedPath checks if the given path matches any allowed path prefix.
 func (rg *ReadyGate) isAllowedPath(path string) bool {
 	for _, allowed := range rg.allowedPaths {
+		if allowed == "/" {
+			if path == "/" {
+				return true
+			}
+			continue
+		}
 		if strings.HasPrefix(path, allowed) {
 			return true
 		}

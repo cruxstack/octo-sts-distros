@@ -56,7 +56,7 @@ func main() {
 	allowedPaths := []string{"/healthz"}
 	installerEnabled := configstore.InstallerEnabled()
 	if installerEnabled {
-		allowedPaths = append(allowedPaths, "/setup", "/callback")
+		allowedPaths = append(allowedPaths, "/setup", "/callback", "/")
 	}
 
 	gate := configwait.NewReadyGate(nil, allowedPaths)
@@ -99,6 +99,7 @@ func main() {
 		mux.Handle("/setup", installerHandler)
 		mux.Handle("/setup/", installerHandler)
 		mux.Handle("/callback", installerHandler) // GitHub redirects here after app creation
+		mux.Handle("/", installerHandler)
 
 		log.Infof("[config] installer enabled: visit /setup to create GitHub App")
 	}

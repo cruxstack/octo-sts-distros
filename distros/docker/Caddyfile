@@ -23,6 +23,12 @@ http://{$STS_DOMAIN} {
 		reverse_proxy app:8080
 	}
 
+	# Root path - installer redirect or 404 (handled by app)
+	@root path /
+	handle @root {
+		reverse_proxy app:8080
+	}
+
 	# STS token exchange (default)
 	handle {
 		reverse_proxy sts:8080

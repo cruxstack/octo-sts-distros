@@ -5,7 +5,9 @@ package configstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,6 +20,8 @@ import (
 type SSMClient interface {
 	PutParameter(ctx context.Context, params *ssm.PutParameterInput,
 		optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error)
+	GetParameter(ctx context.Context, params *ssm.GetParameterInput,
+		optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
 }
 
 // AWSSSMStore saves credentials to AWS Systems Manager Parameter Store with encryption.
@@ -99,6 +103,13 @@ func (s *AWSSSMStore) Save(ctx context.Context, creds *AppCredentials) error {
 		EnvAppSecretCert:       creds.PrivateKey,
 	}
 
+	if creds.AppSlug != "" {
+		parameters[EnvGitHubAppSlug] = creds.AppSlug
+	}
+	if creds.HTMLURL != "" {
+		parameters[EnvGitHubAppHTMLURL] = creds.HTMLURL
+	}
+
 	// Optionally add STS_DOMAIN if provided
 	if creds.STSDomain != "" {
 		parameters[EnvSTSDomain] = creds.STSDomain
@@ -147,4 +158,75 @@ func (s *AWSSSMStore) putParameter(ctx context.Context, name, value string) erro
 	}
 
 	return nil
+}
+
+func (s *AWSSSMStore) Status(ctx context.Context) (*InstallerStatus, error) {
+	status := &InstallerStatus{}
+	required := []string{
+		EnvGitHubAppID,
+		EnvGitHubWebhookSecret,
+		EnvGitHubClientID,
+		EnvGitHubClientSecret,
+		EnvAppSecretCert,
+	}
+
+	values := make(map[string]string)
+	for _, key := range required {
+		value, err := s.getParameterValue(ctx, key)
+		if err != nil {
+			if isParameterNotFound(err) {
+				return status, nil
+			}
+			return nil, err
+		}
+		values[key] = value
+	}
+
+	status.Registered = true
+	if id, err := strconv.ParseInt(strings.TrimSpace(values[EnvGitHubAppID]), 10, 64); err == nil {
+		status.AppID = id
+	}
+
+	if slug, err := s.getParameterValue(ctx, EnvGitHubAppSlug); err == nil {
+		status.AppSlug = slug
+	} else if !isParameterNotFound(err) {
+		return nil, err
+	}
+
+	if html, err := s.getParameterValue(ctx, EnvGitHubAppHTMLURL); err == nil {
+		status.HTMLURL = html
+	} else if !isParameterNotFound(err) {
+		return nil, err
+	}
+
+	if flag, err := s.getParameterValue(ctx, EnvInstallerEnabled); err == nil {
+		status.InstallerDisabled = isFalseString(flag)
+	} else if !isParameterNotFound(err) {
+		return nil, err
+	}
+
+	return status, nil
+}
+
+func (s *AWSSSMStore) DisableInstaller(ctx context.Context) error {
+	return s.putParameter(ctx, EnvInstallerEnabled, "false")
+}
+
+func (s *AWSSSMStore) getParameterValue(ctx context.Context, name string) (string, error) {
+	output, err := s.ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           aws.String(s.ParameterPrefix + name),
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return "", err
+	}
+	if output.Parameter == nil || output.Parameter.Value == nil {
+		return "", fmt.Errorf("parameter %s missing value", name)
+	}
+	return aws.ToString(output.Parameter.Value), nil
+}
+
+func isParameterNotFound(err error) bool {
+	var notFound *types.ParameterNotFound
+	return errors.As(err, &notFound)
 }

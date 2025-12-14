@@ -16,6 +16,8 @@ import (
 const (
 	EnvSTSDomain           = "STS_DOMAIN"
 	EnvGitHubAppID         = "GITHUB_APP_ID"
+	EnvGitHubAppSlug       = "GITHUB_APP_SLUG"
+	EnvGitHubAppHTMLURL    = "GITHUB_APP_HTML_URL"
 	EnvGitHubWebhookSecret = "GITHUB_WEBHOOK_SECRET"
 	EnvGitHubClientID      = "GITHUB_CLIENT_ID"
 	EnvGitHubClientSecret  = "GITHUB_CLIENT_SECRET"
@@ -58,9 +60,20 @@ type AppCredentials struct {
 	STSDomain string `json:"-"` // Set by installer, not from GitHub API
 }
 
+// InstallerStatus describes the current GitHub App registration state.
+type InstallerStatus struct {
+	Registered        bool
+	InstallerDisabled bool
+	AppID             int64
+	AppSlug           string
+	HTMLURL           string
+}
+
 // Store saves app credentials to various backends (local disk, AWS SSM, etc).
 type Store interface {
 	Save(ctx context.Context, creds *AppCredentials) error
+	Status(ctx context.Context) (*InstallerStatus, error)
+	DisableInstaller(ctx context.Context) error
 }
 
 // NewFromEnv creates a Store based on environment variable configuration.
@@ -114,6 +127,27 @@ func NewFromEnv() (Store, error) {
 func InstallerEnabled() bool {
 	v := strings.ToLower(os.Getenv(EnvInstallerEnabled))
 	return v == "true" || v == "1" || v == "yes"
+}
+
+func hasAllValues(values map[string]string, keys ...string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, key := range keys {
+		if strings.TrimSpace(values[key]) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func isFalseString(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return true
+	default:
+		return false
+	}
 }
 
 // getEnvDefault is an alias to the shared implementation.

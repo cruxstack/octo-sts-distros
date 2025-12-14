@@ -83,6 +83,12 @@
         .btn:hover {
             background: #2c974b;
         }
+        .btn.secondary {
+            background: #d1242f;
+        }
+        .btn.secondary:hover {
+            background: #a40e26;
+        }
         .next-step {
             background: #ddf4ff;
             border: 1px solid #54aeff;
@@ -100,6 +106,23 @@
             color: #24292f;
             font-size: 14px;
         }
+        .disable-panel {
+            background: #fff8c5;
+            border: 1px solid #d4a72c;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .disable-panel h3 {
+            margin: 0 0 8px 0;
+            color: #6e5b00;
+            font-size: 16px;
+        }
+        .disable-panel p {
+            margin: 0 0 12px 0;
+            color: #24292f;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -111,6 +134,7 @@
             <p>Your GitHub App <strong>{{.AppSlug}}</strong> has been created and credentials have been saved.</p>
         </div>
 
+        {{if .InstallURL}}
         <div class="next-step">
             <h3>Next Step: Install the App</h3>
             <p>
@@ -119,15 +143,37 @@
             </p>
             <a href="{{.InstallURL}}" target="_blank" class="btn">Install App</a>
         </div>
+        {{end}}
 
+        {{if .DisableActionURL}}
+        <div class="disable-panel">
+            <h3>Disable Web Installer</h3>
+            {{if .InstallerDisabled}}
+            <p>Setup has already been disabled. Restart the service to stop exposing the installer.</p>
+            {{else}}
+            <p>Once credentials are saved, disable this page so future visitors can't modify your configuration.</p>
+            <form action="{{.DisableActionURL}}" method="post" style="margin:0;">
+                <button type="submit" class="btn secondary">Disable Setup &amp; Continue</button>
+            </form>
+            {{end}}
+        </div>
+        {{end}}
+
+        {{- $showAppID := and (ne .AppID 0) (not .InstallerDisabled) -}}
+        {{if or $showAppID .HTMLURL}}
         <div class="details">
             <dl>
+                {{if $showAppID}}
                 <dt>App ID</dt>
                 <dd>{{.AppID}}</dd>
+                {{end}}
+                {{if .HTMLURL}}
                 <dt>App URL</dt>
                 <dd><a href="{{.HTMLURL}}" target="_blank">{{.HTMLURL}}</a></dd>
+                {{end}}
             </dl>
         </div>
+        {{end}}
 
         <p>
             Credentials have been saved to the configured storage directory. 

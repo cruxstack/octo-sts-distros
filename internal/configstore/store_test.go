@@ -44,6 +44,8 @@ func TestLocalFileStore_Save(t *testing.T) {
 		{"client-secret", "secret123"},
 		{"webhook-secret", "webhook-secret"},
 		{"private-key.pem", "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"},
+		{"app-slug", "test-app"},
+		{"app-html-url", "https://github.com/apps/test-app"},
 	}
 
 	for _, tt := range tests {
@@ -55,6 +57,68 @@ func TestLocalFileStore_Save(t *testing.T) {
 		if string(content) != tt.expected {
 			t.Errorf("%s = %q, want %q", tt.file, string(content), tt.expected)
 		}
+	}
+}
+
+func TestLocalFileStore_StatusAndDisable(t *testing.T) {
+	dir := t.TempDir()
+	store := NewLocalFileStore(dir)
+	ctx := context.Background()
+
+	status, err := store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Registered {
+		t.Fatal("Status() should report unregistered when files missing")
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		AppSlug:       "test-app",
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+		HTMLURL:       "https://github.com/apps/test-app",
+	}
+
+	if err := store.Save(ctx, creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	status, err = store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.Registered {
+		t.Fatal("Status() should report registered after saving credentials")
+	}
+	if status.AppID != 12345 {
+		t.Errorf("AppID = %d, want 12345", status.AppID)
+	}
+	if status.AppSlug != "test-app" {
+		t.Errorf("AppSlug = %q, want 'test-app'", status.AppSlug)
+	}
+	if status.HTMLURL != "https://github.com/apps/test-app" {
+		t.Errorf("HTMLURL = %q, want https://github.com/apps/test-app", status.HTMLURL)
+	}
+
+	if err := store.DisableInstaller(ctx); err != nil {
+		t.Fatalf("DisableInstaller() error = %v", err)
+	}
+
+	disabledPath := filepath.Join(dir, "installer-disabled")
+	if _, err := os.Stat(disabledPath); err != nil {
+		t.Fatalf("installer-disabled file missing: %v", err)
+	}
+
+	status, err = store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.InstallerDisabled {
+		t.Error("InstallerDisabled should be true after disabling installer")
 	}
 }
 
@@ -92,6 +156,8 @@ func TestLocalEnvFileStore_Save_NewFile(t *testing.T) {
 		"GITHUB_CLIENT_ID":               "Iv1.abc123",
 		"GITHUB_CLIENT_SECRET":           "secret123",
 		"APP_SECRET_CERTIFICATE_ENV_VAR": "-----BEGIN RSA PRIVATE KEY-----\\ntest\\n-----END RSA PRIVATE KEY-----",
+		"GITHUB_APP_SLUG":                "test-app",
+		"GITHUB_APP_HTML_URL":            "https://github.com/apps/test-app",
 	}
 
 	for key, expectedValue := range expectedPairs {
@@ -111,6 +177,76 @@ func TestLocalEnvFileStore_Save_NewFile(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Errorf(".env file permissions = %o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestLocalEnvFileStore_StatusAndDisable(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, ".env")
+	store := NewLocalEnvFileStore(envPath)
+
+	ctx := context.Background()
+
+	status, err := store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.Registered {
+		t.Fatal("Status() should report unregistered when .env missing")
+	}
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		AppSlug:       "test-app",
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+		HTMLURL:       "https://github.com/apps/test-app",
+	}
+
+	if err := store.Save(ctx, creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	status, err = store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.Registered {
+		t.Fatal("Status() should report registered after saving credentials")
+	}
+	if status.AppID != 12345 {
+		t.Errorf("AppID = %d, want 12345", status.AppID)
+	}
+	if status.AppSlug != "test-app" {
+		t.Errorf("AppSlug = %q, want 'test-app'", status.AppSlug)
+	}
+	if status.HTMLURL != "https://github.com/apps/test-app" {
+		t.Errorf("HTMLURL = %q, want https://github.com/apps/test-app", status.HTMLURL)
+	}
+	if status.InstallerDisabled {
+		t.Error("InstallerDisabled should be false by default")
+	}
+
+	if err := store.DisableInstaller(ctx); err != nil {
+		t.Fatalf("DisableInstaller() error = %v", err)
+	}
+
+	status, err = store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.InstallerDisabled {
+		t.Error("InstallerDisabled should be true after disabling installer")
+	}
+
+	content, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("Failed to read .env: %v", err)
+	}
+	if !strings.Contains(string(content), "INSTALLER_ENABLED=false") {
+		t.Error("INSTALLER_ENABLED flag not persisted in .env file")
 	}
 }
 
@@ -432,8 +568,11 @@ func TestFormatEnvLine(t *testing.T) {
 
 type mockSSMClient struct {
 	calls            []putParameterCall
+	parameters       map[string]string
 	putParameterFunc func(ctx context.Context, params *ssm.PutParameterInput,
 		optFns ...func(*ssm.Options)) (*ssm.PutParameterOutput, error)
+	getParameterFunc func(ctx context.Context, params *ssm.GetParameterInput,
+		optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
 }
 
 type putParameterCall struct {
@@ -458,6 +597,11 @@ func (m *mockSSMClient) PutParameter(ctx context.Context, params *ssm.PutParamet
 	}
 	m.calls = append(m.calls, call)
 
+	if m.parameters == nil {
+		m.parameters = make(map[string]string)
+	}
+	m.parameters[aws.ToString(params.Name)] = aws.ToString(params.Value)
+
 	// Use custom function if provided
 	if m.putParameterFunc != nil {
 		return m.putParameterFunc(ctx, params, optFns...)
@@ -466,6 +610,30 @@ func (m *mockSSMClient) PutParameter(ctx context.Context, params *ssm.PutParamet
 	// Default success response
 	return &ssm.PutParameterOutput{
 		Version: 1,
+	}, nil
+}
+
+func (m *mockSSMClient) GetParameter(ctx context.Context, params *ssm.GetParameterInput,
+	optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+	if m.getParameterFunc != nil {
+		return m.getParameterFunc(ctx, params, optFns...)
+	}
+
+	if m.parameters == nil {
+		return nil, &types.ParameterNotFound{}
+	}
+
+	name := aws.ToString(params.Name)
+	value, ok := m.parameters[name]
+	if !ok {
+		return nil, &types.ParameterNotFound{}
+	}
+
+	return &ssm.GetParameterOutput{
+		Parameter: &types.Parameter{
+			Name:  aws.String(name),
+			Value: aws.String(value),
+		},
 	}, nil
 }
 
@@ -504,9 +672,9 @@ func TestAWSSSMStore_Save_Success(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	// Verify all 6 parameters were created (including STS_DOMAIN)
-	if len(mockClient.calls) != 6 {
-		t.Errorf("Expected 6 PutParameter calls, got %d", len(mockClient.calls))
+	// Verify all 8 parameters were created (including STS_DOMAIN)
+	if len(mockClient.calls) != 8 {
+		t.Errorf("Expected 8 PutParameter calls, got %d", len(mockClient.calls))
 	}
 
 	// Verify each parameter
@@ -520,6 +688,8 @@ func TestAWSSSMStore_Save_Success(t *testing.T) {
 		{EnvGitHubClientSecret, "secret123"},
 		{EnvAppSecretCert, "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"},
 		{EnvSTSDomain, "sts.example.com"},
+		{EnvGitHubAppSlug, "test-app"},
+		{EnvGitHubAppHTMLURL, "https://github.com/apps/test-app"},
 	}
 
 	for _, tt := range tests {
@@ -849,7 +1019,7 @@ func TestNewAWSSSMStore_WithOptions(t *testing.T) {
 		t.Errorf("Tags[Environment] = %q, want 'test'", store.Tags["Environment"])
 	}
 
-	if store.ssmClient != mockClient {
+	if client, ok := store.ssmClient.(*mockSSMClient); !ok || client != mockClient {
 		t.Error("SSM client was not set correctly")
 	}
 }
@@ -887,17 +1057,86 @@ func TestAWSSSMStore_Save_AllCredentialFields(t *testing.T) {
 		EnvGitHubClientSecret:  "super-secret",
 		EnvAppSecretCert:       "-----BEGIN PRIVATE KEY-----\nKEY_DATA\n-----END PRIVATE KEY-----",
 		EnvSTSDomain:           "sts.production.com",
+		EnvGitHubAppSlug:       "my-app",
+		EnvGitHubAppHTMLURL:    "https://github.com/apps/my-app",
 	}
 
-	for name, expectedValue := range expectedValues {
-		call := mockClient.getCall(name)
+	for key, expected := range expectedValues {
+		call := mockClient.getCall(key)
 		if call == nil {
-			t.Errorf("Parameter %s was not created", name)
+			t.Errorf("Parameter %s was not created", key)
 			continue
 		}
-		if call.Value != expectedValue {
-			t.Errorf("Parameter %s = %q, want %q", name, call.Value, expectedValue)
+
+		if call.Value != expected {
+			t.Errorf("Parameter %s value = %q, want %q", key, call.Value, expected)
 		}
+	}
+}
+
+func TestAWSSSMStore_StatusAndDisable(t *testing.T) {
+	mockClient := &mockSSMClient{}
+	store, err := NewAWSSSMStore("/octo-sts/app/",
+		WithSSMClient(mockClient),
+	)
+	if err != nil {
+		t.Fatalf("NewAWSSSMStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+
+	creds := &AppCredentials{
+		AppID:         12345,
+		AppSlug:       "test-app",
+		ClientID:      "Iv1.abc123",
+		ClientSecret:  "secret123",
+		WebhookSecret: "webhook-secret",
+		PrivateKey:    "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+		HTMLURL:       "https://github.com/apps/test-app",
+	}
+
+	if err := store.Save(ctx, creds); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	status, err := store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.Registered {
+		t.Fatal("Status() should report registered after saving credentials")
+	}
+	if status.AppID != 12345 {
+		t.Errorf("AppID = %d, want 12345", status.AppID)
+	}
+	if status.AppSlug != "test-app" {
+		t.Errorf("AppSlug = %q, want 'test-app'", status.AppSlug)
+	}
+	if status.HTMLURL != "https://github.com/apps/test-app" {
+		t.Errorf("HTMLURL = %q, want https://github.com/apps/test-app", status.HTMLURL)
+	}
+	if status.InstallerDisabled {
+		t.Error("InstallerDisabled should be false by default")
+	}
+
+	if err := store.DisableInstaller(ctx); err != nil {
+		t.Fatalf("DisableInstaller() error = %v", err)
+	}
+
+	call := mockClient.getCall(EnvInstallerEnabled)
+	if call == nil {
+		t.Fatal("INSTALLER_ENABLED parameter was not written")
+	}
+	if call.Value != "false" {
+		t.Errorf("INSTALLER_ENABLED value = %q, want 'false'", call.Value)
+	}
+
+	status, err = store.Status(ctx)
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.InstallerDisabled {
+		t.Error("InstallerDisabled should be true after disabling installer")
 	}
 }
 

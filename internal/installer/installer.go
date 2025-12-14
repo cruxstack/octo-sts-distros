@@ -43,6 +43,8 @@ const (
 	// Environment variable names for installer configuration
 	EnvGitHubURL = "GITHUB_URL"
 	EnvGitHubOrg = "GITHUB_ORG"
+
+	disableSetupPath = "/setup/disable"
 )
 
 // Config holds the installer configuration.
@@ -82,6 +84,15 @@ type Handler struct {
 	config Config
 }
 
+type successTemplateData struct {
+	AppID             int64
+	AppSlug           string
+	HTMLURL           string
+	InstallURL        string
+	DisableActionURL  string
+	InstallerDisabled bool
+}
+
 // New creates a new installer Handler with the given configuration.
 func New(cfg Config) (*Handler, error) {
 	if cfg.Store == nil {
@@ -101,13 +112,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
 	switch {
-	case r.Method == http.MethodGet && (path == "/setup" || path == "/setup/"):
+	case (r.Method == http.MethodGet || r.Method == http.MethodHead) && (path == "/" || path == ""):
+		h.handleRoot(w, r)
+	case (r.Method == http.MethodGet || r.Method == http.MethodHead) && (path == "/setup" || path == "/setup/"):
 		h.handleIndex(w, r)
-	case r.Method == http.MethodGet && path == "/callback":
+	case (r.Method == http.MethodGet || r.Method == http.MethodHead) && path == "/callback":
 		h.handleCallback(w, r)
+
+	case r.Method == http.MethodPost && (path == disableSetupPath || path == disableSetupPath+"/"):
+		h.handleDisable(w, r)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleIndex serves the main page with the manifest form.
+func (h *Handler) handleRoot(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := clog.FromContext(ctx)
+
+	status, err := h.config.Store.Status(ctx)
+	if err != nil {
+		log.Errorf("[installer] failed to read installer status: %v", err)
+		http.Error(w, "Failed to load installer status", http.StatusInternalServerError)
+		return
+	}
+
+	if status != nil && status.InstallerDisabled {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.Redirect(w, r, "/setup", http.StatusFound)
 }
 
 // handleIndex serves the main page with the manifest form.
@@ -115,9 +151,23 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	log := clog.FromContext(ctx)
 
+	status, err := h.config.Store.Status(ctx)
+
+	if err != nil {
+		log.Errorf("[installer] failed to read installer status: %v", err)
+		http.Error(w, "Failed to load installer status", http.StatusInternalServerError)
+		return
+	}
+	if status != nil && status.Registered {
+		data := h.successDataFromStatus(status)
+		h.renderSuccess(w, r, data)
+		return
+	}
+
 	// Determine redirect URL: use configured value, or derive from request
 	// Note: This is the base URL (without path). The manifest will append /setup/callback
 	redirectURL := h.config.RedirectURL
+
 	if redirectURL == "" {
 		redirectURL = getBaseURL(ctx, r)
 		log.Infof("[installer] auto-detected redirect url: url=%s host=%s forwarded_host=%s",
@@ -229,33 +279,8 @@ func (h *Handler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	log.Infof("[installer] triggering configuration reload")
 	configwait.TriggerReload()
 
-	// Build installation URL: https://github.com/apps/{slug}/installations/new
-	installURL := fmt.Sprintf("%s/apps/%s/installations/new", h.config.GitHubURL, creds.AppSlug)
-
-	// Render success page
-	data := struct {
-		AppID      int64
-		AppSlug    string
-		HTMLURL    string
-		InstallURL string
-	}{
-		AppID:      creds.AppID,
-		AppSlug:    creds.AppSlug,
-		HTMLURL:    creds.HTMLURL,
-		InstallURL: installURL,
-	}
-
-	var buf bytes.Buffer
-	if err := successTemplate.Execute(&buf, data); err != nil {
-		log.Errorf("[installer] failed to render success template: %v", err)
-		http.Error(w, "Failed to render page", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	if _, err := buf.WriteTo(w); err != nil {
-		log.Errorf("[installer] failed to write response: %v", err)
-	}
+	data := h.successDataFromCreds(creds)
+	h.renderSuccess(w, r, data)
 }
 
 // exchangeCode calls GitHub API to exchange the temporary code for app credentials.
@@ -297,6 +322,90 @@ func (h *Handler) exchangeCode(ctx context.Context, code string) (*configstore.A
 	}
 
 	return &creds, nil
+}
+
+func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	log := clog.FromContext(ctx)
+
+	// Require app to be registered before allowing disable
+	status, err := h.config.Store.Status(ctx)
+	if err != nil {
+		log.Errorf("[installer] failed to check status: %v", err)
+		http.Error(w, "Failed to check installer status", http.StatusInternalServerError)
+		return
+	}
+	if status == nil || !status.Registered {
+		http.Error(w, "Cannot disable installer before app is registered", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.config.Store.DisableInstaller(ctx); err != nil {
+		log.Errorf("[installer] failed to disable installer: %v", err)
+		http.Error(w, "Failed to disable installer", http.StatusInternalServerError)
+		return
+	}
+
+	log.Infof("[installer] installer disabled via setup UI")
+	http.Redirect(w, r, "/healthz", http.StatusSeeOther)
+}
+
+func (h *Handler) successDataFromCreds(creds *configstore.AppCredentials) successTemplateData {
+	data := successTemplateData{
+		AppID:            creds.AppID,
+		AppSlug:          creds.AppSlug,
+		HTMLURL:          creds.HTMLURL,
+		DisableActionURL: disableSetupPath,
+	}
+	data.InstallURL = h.installURLFor(creds.AppSlug, creds.HTMLURL)
+	return data
+}
+
+func (h *Handler) successDataFromStatus(status *configstore.InstallerStatus) successTemplateData {
+	if status == nil {
+		return successTemplateData{}
+	}
+	data := successTemplateData{
+		AppID:             status.AppID,
+		AppSlug:           status.AppSlug,
+		HTMLURL:           status.HTMLURL,
+		InstallerDisabled: status.InstallerDisabled,
+		DisableActionURL:  disableSetupPath,
+	}
+	data.InstallURL = h.installURLFor(status.AppSlug, status.HTMLURL)
+	return data
+}
+
+func (h *Handler) installURLFor(slug, htmlURL string) string {
+	if slug != "" {
+		githubURL := h.config.GitHubURL
+		if githubURL == "" {
+			githubURL = "https://github.com"
+		}
+		return fmt.Sprintf("%s/apps/%s/installations/new", githubURL, slug)
+	}
+	if htmlURL != "" {
+		trimmed := strings.TrimRight(htmlURL, "/")
+		return trimmed + "/installations/new"
+	}
+	return ""
+}
+
+func (h *Handler) renderSuccess(w http.ResponseWriter, r *http.Request, data successTemplateData) {
+	ctx := r.Context()
+	log := clog.FromContext(ctx)
+
+	var buf bytes.Buffer
+	if err := successTemplate.Execute(&buf, data); err != nil {
+		log.Errorf("[installer] failed to render success template: %v", err)
+		http.Error(w, "Failed to render page", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := buf.WriteTo(w); err != nil {
+		log.Errorf("[installer] failed to write response: %v", err)
+	}
 }
 
 // getBaseURL derives the base URL from the request headers.
