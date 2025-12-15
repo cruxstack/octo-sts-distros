@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cruxstack/octo-sts-distros/pkg/ghappsetup/configstore"
+	"github.com/cruxstack/github-app-setup-go/configstore"
 )
 
 // Re-export types from the library
@@ -25,22 +25,22 @@ type (
 
 // Re-export constants from the library
 const (
-	EnvGitHubAppID         = configstore.EnvGitHubAppID
-	EnvGitHubAppSlug       = configstore.EnvGitHubAppSlug
-	EnvGitHubAppHTMLURL    = configstore.EnvGitHubAppHTMLURL
-	EnvGitHubWebhookSecret = configstore.EnvGitHubWebhookSecret
-	EnvGitHubClientID      = configstore.EnvGitHubClientID
-	EnvGitHubClientSecret  = configstore.EnvGitHubClientSecret
-	EnvAppSecretCert       = configstore.EnvAppSecretCert
-	EnvInstallerEnabled    = configstore.EnvInstallerEnabled
-	EnvStorageMode         = configstore.EnvStorageMode
-	EnvStorageDir          = configstore.EnvStorageDir
-	EnvAWSSSMParameterPfx  = configstore.EnvAWSSSMParameterPfx
-	EnvAWSSSMKMSKeyID      = configstore.EnvAWSSSMKMSKeyID
-	EnvAWSSSMTags          = configstore.EnvAWSSSMTags
-	StorageModeEnvFile     = configstore.StorageModeEnvFile
-	StorageModeFiles       = configstore.StorageModeFiles
-	StorageModeAWSSSM      = configstore.StorageModeAWSSSM
+	EnvGitHubAppID               = configstore.EnvGitHubAppID
+	EnvGitHubAppSlug             = configstore.EnvGitHubAppSlug
+	EnvGitHubAppHTMLURL          = configstore.EnvGitHubAppHTMLURL
+	EnvGitHubWebhookSecret       = configstore.EnvGitHubWebhookSecret
+	EnvGitHubClientID            = configstore.EnvGitHubClientID
+	EnvGitHubClientSecret        = configstore.EnvGitHubClientSecret
+	EnvGitHubAppPrivateKey       = configstore.EnvGitHubAppPrivateKey
+	EnvGitHubAppInstallerEnabled = configstore.EnvGitHubAppInstallerEnabled
+	EnvStorageMode               = configstore.EnvStorageMode
+	EnvStorageDir                = configstore.EnvStorageDir
+	EnvAWSSSMParameterPfx        = configstore.EnvAWSSSMParameterPfx
+	EnvAWSSSMKMSKeyID            = configstore.EnvAWSSSMKMSKeyID
+	EnvAWSSSMTags                = configstore.EnvAWSSSMTags
+	StorageModeEnvFile           = configstore.StorageModeEnvFile
+	StorageModeFiles             = configstore.StorageModeFiles
+	StorageModeAWSSSM            = configstore.StorageModeAWSSSM
 )
 
 // Octo-STS specific constant
@@ -73,11 +73,7 @@ func ExtractSTSDomainFromWebhookURL(webhookURL string) string {
 	return ""
 }
 
-// ShouldUpdateSTSDomain determines if the STS_DOMAIN should be updated based on
-// existing and new values. Returns true if:
-// - existingHost is empty
-// - newHost contains ngrok domain
-// - existingHost contains ngrok domain
+// ShouldUpdateSTSDomain returns true if existing is empty or either host is an ngrok domain.
 func ShouldUpdateSTSDomain(existingHost, newHost string) bool {
 	if existingHost == "" {
 		return true

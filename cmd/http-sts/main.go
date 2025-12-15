@@ -15,7 +15,7 @@ import (
 
 	"github.com/chainguard-dev/clog"
 
-	"github.com/cruxstack/octo-sts-distros/internal/configwait"
+	"github.com/cruxstack/github-app-setup-go/configwait"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/cruxstack/octo-sts-distros/internal/sts"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
@@ -57,8 +57,8 @@ func (h *stsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	req := sts.Request{
-		Type:        sts.RequestTypeHTTP,
+	req := shared.Request{
+		Type:        shared.RequestTypeHTTP,
 		Method:      r.Method,
 		Path:        r.URL.Path,
 		Headers:     headers,
@@ -85,6 +85,8 @@ func (h *stsHandler) SetSTS(s *sts.STS) {
 }
 
 func main() {
+	shared.SetupEnvMapping()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
@@ -134,6 +136,9 @@ func main() {
 
 	// loadConfig loads configuration and creates the STS instance (supports reload).
 	loadConfig := func(ctx context.Context) error {
+		// Re-run env mapping for hot-reload support
+		shared.SetupEnvMapping()
+
 		baseCfg, err := envConfig.BaseConfig()
 		if err != nil {
 			return fmt.Errorf("base config: %w", err)
@@ -162,11 +167,25 @@ func main() {
 		return nil
 	}
 
+	// Set up reloader BEFORE starting wait loop so installer can trigger reload
+	reloader := configwait.NewReloader(ctx, gate, loadConfig)
+	configwait.SetGlobalReloader(reloader)
+	reloader.Start()
+	log.Infof("Configuration reloader started (send SIGHUP to reload)")
+
 	// Load config in background with retries
 	go func() {
 		waitCfg := configwait.NewConfigFromEnv()
 
+		// Track reload count to detect installer triggers
+		initialReloadCount := configwait.GetReloadCount()
+
 		err := configwait.Wait(ctx, waitCfg, func(ctx context.Context) error {
+			// Check if a reload was triggered (e.g., by installer saving credentials)
+			if configwait.GetReloadCount() > initialReloadCount {
+				log.Infof("[configwait] reload triggered, retrying immediately")
+				initialReloadCount = configwait.GetReloadCount()
+			}
 			return loadConfig(ctx)
 		})
 
@@ -176,12 +195,6 @@ func main() {
 		}
 
 		log.Infof("Configuration loaded, service is ready")
-
-		reloader := configwait.NewReloader(ctx, gate, loadConfig)
-		configwait.SetGlobalReloader(reloader)
-		reloader.Start()
-
-		log.Infof("Configuration reloader started (send SIGHUP to reload)")
 	}()
 
 	<-ctx.Done()

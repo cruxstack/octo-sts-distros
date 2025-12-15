@@ -39,7 +39,7 @@ exchanges.
 | `GITHUB_APP_ID`                  | GitHub App identifier         |
 | `KMS_KEY`                        | GCP KMS key path (optional)   |
 | `APP_SECRET_CERTIFICATE_FILE`    | PEM key file path (optional)  |
-| `APP_SECRET_CERTIFICATE_ENV_VAR` | PEM key as env var (optional) |
+| `GITHUB_APP_PRIVATE_KEY`         | PEM key as env var (optional) |
 | `STS_DOMAIN`                     | Service domain for validation |
 | `EVENT_INGRESS_URI`              | CloudEvents endpoint          |
 | `METRICS`                        | Enable metrics/tracing        |
@@ -229,7 +229,7 @@ Token revocation utility.
 **Location**: `pkg/ghtransport/ghtransport.go`
 
 **Supported Authentication Methods**:
-1. **Environment Variable**: PEM key in `APP_SECRET_CERTIFICATE_ENV_VAR`
+1. **Environment Variable**: PEM key in `GITHUB_APP_PRIVATE_KEY`
 2. **File**: PEM key file at `APP_SECRET_CERTIFICATE_FILE`
 3. **GCP KMS**: Signing via Cloud KMS using `KMS_KEY`
 
@@ -405,7 +405,7 @@ func WebhookConfig() (*EnvConfigWebhook, error)
 
 **Validation**:
 - Only one of `KMS_KEY`, `APP_SECRET_CERTIFICATE_FILE`, or
-  `APP_SECRET_CERTIFICATE_ENV_VAR` may be set
+  `GITHUB_APP_PRIVATE_KEY` may be set
 
 ---
 

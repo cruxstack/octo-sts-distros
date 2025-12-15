@@ -6,8 +6,10 @@
 package installer
 
 import (
-	"github.com/cruxstack/octo-sts-distros/pkg/ghappsetup/configstore"
-	"github.com/cruxstack/octo-sts-distros/pkg/ghappsetup/installer"
+	"context"
+
+	"github.com/cruxstack/github-app-setup-go/configstore"
+	"github.com/cruxstack/github-app-setup-go/installer"
 )
 
 // Re-export types from the library
@@ -73,5 +75,17 @@ func NewOctoSTSConfig(store configstore.Store) Config {
 	cfg.Store = store
 	cfg.Manifest = OctoSTSManifest()
 	cfg.AppDisplayName = "Octo-STS"
+
+	// Map CUSTOM_DOMAIN (set by installer UI) to STS_DOMAIN (used by octo-sts)
+	cfg.OnCredentialsSaved = func(_ context.Context, creds *configstore.AppCredentials) error {
+		if creds.CustomFields == nil {
+			creds.CustomFields = make(map[string]string)
+		}
+		if domain := creds.CustomFields["CUSTOM_DOMAIN"]; domain != "" {
+			creds.CustomFields["STS_DOMAIN"] = domain
+		}
+		return nil
+	}
+
 	return cfg
 }

@@ -95,7 +95,7 @@ module "octo_sts" {
   # Point to SSM parameters (will be created by the setup wizard)
   github_app_config = {
     app_id         = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_APP_ID"
-    private_key    = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/APP_SECRET_CERTIFICATE_ENV_VAR"
+    private_key    = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_APP_PRIVATE_KEY"
     webhook_secret = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_WEBHOOK_SECRET"
   }
 
@@ -158,7 +158,7 @@ module "octo_sts" {
 
   github_app_config = {
     app_id      = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/GITHUB_APP_ID"
-    private_key = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/APP_SECRET_CERTIFICATE_ENV_VAR"
+    private_key = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/GITHUB_APP_PRIVATE_KEY"
   }
 
   # Grant Lambda access to SSM parameters
@@ -241,7 +241,7 @@ When the installer is enabled:
 installer in two ways:
 
 1. **Via the UI** - Click "Disable Installer" on the success page. This sets
-   `INSTALLER_ENABLED=false` in SSM, which immediately hides the setup UI. The
+   `GITHUB_APP_INSTALLER_ENABLED=false` in SSM, which immediately hides the setup UI. The
    API Gateway routes remain but return 404. This does not cause Terraform
    drift since routes are still managed by Terraform.
 
@@ -328,7 +328,7 @@ Example:
 ```hcl
 github_app_config = {
   app_id      = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/GITHUB_APP_ID"
-  private_key = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/APP_SECRET_CERTIFICATE_ENV_VAR"
+  private_key = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/GITHUB_APP_PRIVATE_KEY"
 }
 ```
 
@@ -343,11 +343,11 @@ SSM parameters are created automatically under the configured prefix:
 | `GITHUB_WEBHOOK_SECRET`         | Webhook secret for signature check    |
 | `GITHUB_CLIENT_ID`              | GitHub OAuth client ID                |
 | `GITHUB_CLIENT_SECRET`          | GitHub OAuth client secret            |
-| `APP_SECRET_CERTIFICATE_ENV_VAR`| GitHub App private key (PEM format)   |
+| `GITHUB_APP_PRIVATE_KEY`        | GitHub App private key (PEM format)   |
 | `GITHUB_APP_SLUG`               | GitHub App slug (optional)            |
 | `GITHUB_APP_HTML_URL`           | GitHub App URL (optional)             |
 | `STS_DOMAIN`                    | STS domain for audience (optional)    |
-| `INSTALLER_ENABLED`             | Set to "false" when disabled          |
+| `GITHUB_APP_INSTALLER_ENABLED`  | Set to "false" when disabled          |
 
 All parameters are stored as `SecureString` type with encryption.
 

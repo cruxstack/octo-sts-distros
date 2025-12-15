@@ -14,9 +14,9 @@ import (
 
 	"github.com/chainguard-dev/clog"
 
+	"github.com/cruxstack/github-app-setup-go/configwait"
 	"github.com/cruxstack/octo-sts-distros/internal/app"
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
-	"github.com/cruxstack/octo-sts-distros/internal/configwait"
 	"github.com/cruxstack/octo-sts-distros/internal/installer"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
@@ -43,6 +43,8 @@ func (h *webhookHandler) SetHandler(handler http.Handler) {
 }
 
 func main() {
+	shared.SetupEnvMapping()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
@@ -87,8 +89,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		installerCfg := installer.NewConfigFromEnv()
-		installerCfg.Store = store
+		installerCfg := installer.NewOctoSTSConfig(store)
 
 		installerHandler, err := installer.New(installerCfg)
 		if err != nil {
@@ -124,6 +125,9 @@ func main() {
 
 	// loadConfig loads configuration and creates the app handler (supports reload).
 	loadConfig := func(ctx context.Context) error {
+		// Re-run env mapping for hot-reload support
+		shared.SetupEnvMapping()
+
 		baseCfg, err := envConfig.BaseConfig()
 		if err != nil {
 			return fmt.Errorf("base config: %w", err)
@@ -160,11 +164,25 @@ func main() {
 		return nil
 	}
 
+	// Set up reloader BEFORE starting wait loop so installer can trigger reload
+	reloader := configwait.NewReloader(ctx, gate, loadConfig)
+	configwait.SetGlobalReloader(reloader)
+	reloader.Start()
+	log.Infof("Configuration reloader started (send SIGHUP to reload)")
+
 	// Load config in background with retries
 	go func() {
 		waitCfg := configwait.NewConfigFromEnv()
 
+		// Track reload count to detect installer triggers
+		initialReloadCount := configwait.GetReloadCount()
+
 		err := configwait.Wait(ctx, waitCfg, func(ctx context.Context) error {
+			// Check if a reload was triggered (e.g., by installer saving credentials)
+			if configwait.GetReloadCount() > initialReloadCount {
+				log.Infof("[configwait] reload triggered, retrying immediately")
+				initialReloadCount = configwait.GetReloadCount()
+			}
 			return loadConfig(ctx)
 		})
 
@@ -174,12 +192,6 @@ func main() {
 		}
 
 		log.Infof("Configuration loaded, service is ready")
-
-		reloader := configwait.NewReloader(ctx, gate, loadConfig)
-		configwait.SetGlobalReloader(reloader)
-		reloader.Start()
-
-		log.Infof("Configuration reloader started (send SIGHUP to reload)")
 	}()
 
 	<-ctx.Done()

@@ -36,12 +36,16 @@ services:
       - GITHUB_APP_ID=${GITHUB_APP_ID}
       - STS_DOMAIN=${STS_DOMAIN}
       - METRICS=${METRICS:-false}
-      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY:-}
       - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
       - KMS_KEY=${KMS_KEY:-}
       - EVENT_INGRESS_URI=${EVENT_INGRESS_URI:-}
+      # Storage configuration for hot-reload support (reads credentials from shared .env file)
+      - STORAGE_MODE=${STORAGE_MODE:-envfile}
+      - STORAGE_DIR=/config/.env
     volumes:
       - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
+      - ./.env:/config/.env:ro
     networks:
       - octo-sts
     healthcheck:
@@ -67,11 +71,11 @@ services:
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
       - GITHUB_WEBHOOK_ORGANIZATION_FILTER=${GITHUB_WEBHOOK_ORGANIZATION_FILTER:-}
       - METRICS=${METRICS:-false}
-      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY:-}
       - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
       - KMS_KEY=${KMS_KEY:-}
-      # Installer configuration (enabled via INSTALLER_ENABLED=true)
-      - INSTALLER_ENABLED=${INSTALLER_ENABLED:-false}
+      # Installer configuration (enabled via GITHUB_APP_INSTALLER_ENABLED=true)
+      - GITHUB_APP_INSTALLER_ENABLED=${GITHUB_APP_INSTALLER_ENABLED:-false}
       - STORAGE_MODE=${STORAGE_MODE:-envfile}
       - STORAGE_DIR=/config/.env
       - GITHUB_URL=${GITHUB_URL:-https://github.com}

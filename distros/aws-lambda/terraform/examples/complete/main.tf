@@ -33,7 +33,7 @@ module "octo_sts" {
   # existing SSM ARNs.
   github_app_config = {
     app_id         = var.installer_enabled ? "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}GITHUB_APP_ID" : var.github_app_id
-    private_key    = var.installer_enabled ? "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}APP_SECRET_CERTIFICATE_ENV_VAR" : var.github_app_private_key
+    private_key    = var.installer_enabled ? "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}GITHUB_APP_PRIVATE_KEY" : var.github_app_private_key
     webhook_secret = var.installer_enabled ? "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}GITHUB_WEBHOOK_SECRET" : ""
   }
 

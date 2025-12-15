@@ -46,7 +46,7 @@ require (
 	github.com/chainguard-dev/terraform-infra-common v0.9.7 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.16.2 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
-	github.com/cruxstack/octo-sts-distros/pkg/ghappsetup v0.0.0 // indirect
+	github.com/cruxstack/github-app-setup-go v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
@@ -113,5 +113,3 @@ require (
 
 // Reference the local submodules for development
 replace github.com/cruxstack/octo-sts-distros/internal => ../internal
-
-replace github.com/cruxstack/octo-sts-distros/pkg/ghappsetup => ../pkg/ghappsetup

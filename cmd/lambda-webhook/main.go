@@ -14,11 +14,11 @@ import (
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 	"github.com/chainguard-dev/clog"
 
+	"github.com/cruxstack/github-app-setup-go/ssmresolver"
 	"github.com/cruxstack/octo-sts-distros/internal/app"
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
 	"github.com/cruxstack/octo-sts-distros/internal/installer"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
-	"github.com/cruxstack/octo-sts-distros/internal/ssmresolver"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
 	"github.com/octo-sts/app/pkg/ghtransport"
 )
@@ -41,6 +41,8 @@ var (
 )
 
 func init() {
+	shared.SetupEnvMapping()
+
 	ctx := context.Background()
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
@@ -56,8 +58,7 @@ func init() {
 		}
 		configStore = store
 
-		installerCfg := installer.NewConfigFromEnv()
-		installerCfg.Store = store
+		installerCfg := installer.NewOctoSTSConfig(store)
 
 		installerHandler, err := installer.New(installerCfg)
 		if err != nil {
@@ -223,11 +224,11 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 
 // handleWebhook processes webhook requests through the app handler.
 func handleWebhook(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-	appReq := app.Request{
-		Type:    app.RequestTypeHTTP,
+	appReq := shared.Request{
+		Type:    shared.RequestTypeHTTP,
 		Method:  req.RequestContext.HTTP.Method,
 		Path:    req.RawPath,
-		Headers: app.NormalizeHeaders(req.Headers),
+		Headers: shared.NormalizeHeaders(req.Headers),
 		Body:    []byte(req.Body),
 	}
 

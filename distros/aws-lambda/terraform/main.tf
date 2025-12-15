@@ -45,14 +45,14 @@ locals {
     GITHUB_APP_ID = var.installer_config.enabled ? (
       "${local.ssm_arn_prefix}GITHUB_APP_ID"
     ) : var.github_app_config.app_id
-    APP_SECRET_CERTIFICATE_ENV_VAR = var.installer_config.enabled ? (
-      "${local.ssm_arn_prefix}APP_SECRET_CERTIFICATE_ENV_VAR"
+    GITHUB_APP_PRIVATE_KEY = var.installer_config.enabled ? (
+      "${local.ssm_arn_prefix}GITHUB_APP_PRIVATE_KEY"
     ) : var.github_app_config.private_key
   }
 
   lambda_env_sts = merge(local.lambda_env_common, {
-    STS_DOMAIN        = local.sts_domain
-    INSTALLER_ENABLED = tostring(var.installer_config.enabled)
+    STS_DOMAIN                   = local.sts_domain
+    GITHUB_APP_INSTALLER_ENABLED = tostring(var.installer_config.enabled)
   }, var.lambda_environment_variables)
 
   # Webhook Lambda environment includes installer configuration
@@ -60,12 +60,12 @@ locals {
     GITHUB_WEBHOOK_SECRET              = local.github_webhook_secret
     GITHUB_WEBHOOK_ORGANIZATION_FILTER = var.webhook_config.organization_filter
     # Installer configuration
-    INSTALLER_ENABLED        = tostring(var.installer_config.enabled)
-    STORAGE_MODE             = var.installer_config.enabled ? "aws-ssm" : ""
-    AWS_SSM_PARAMETER_PREFIX = var.installer_config.ssm_parameter_prefix
-    AWS_SSM_KMS_KEY_ID       = var.installer_config.kms_key_id
-    GITHUB_URL               = var.installer_config.github_url
-    GITHUB_ORG               = var.installer_config.github_org
+    GITHUB_APP_INSTALLER_ENABLED = tostring(var.installer_config.enabled)
+    STORAGE_MODE                 = var.installer_config.enabled ? "aws-ssm" : ""
+    AWS_SSM_PARAMETER_PREFIX     = var.installer_config.ssm_parameter_prefix
+    AWS_SSM_KMS_KEY_ID           = var.installer_config.kms_key_id
+    GITHUB_URL                   = var.installer_config.github_url
+    GITHUB_ORG                   = var.installer_config.github_org
   }, var.lambda_environment_variables)
 }
 

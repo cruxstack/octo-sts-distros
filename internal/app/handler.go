@@ -12,6 +12,7 @@ import (
 
 	"github.com/chainguard-dev/clog"
 
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/octo-sts/app/pkg/webhook"
 )
 
@@ -26,7 +27,7 @@ const (
 
 // HandleRequest is the single entry point for processing all requests.
 // It routes requests based on method and path to the appropriate handler.
-func (a *App) HandleRequest(ctx context.Context, req Request) Response {
+func (a *App) HandleRequest(ctx context.Context, req shared.Request) shared.Response {
 	// Strip base path from the request path
 	path := a.stripBasePath(req.Path)
 
@@ -63,9 +64,9 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		headers[strings.ToLower(k)] = r.Header.Get(k)
 	}
 
-	// Create app.Request
-	req := Request{
-		Type:    RequestTypeHTTP,
+	// Create shared.Request
+	req := shared.Request{
+		Type:    shared.RequestTypeHTTP,
 		Method:  r.Method,
 		Path:    r.URL.Path,
 		Headers: headers,
@@ -105,7 +106,7 @@ func (a *App) stripBasePath(path string) string {
 // handleWebhook processes GitHub webhook events by delegating to the existing
 // webhook.Validator from pkg/webhook. This approach avoids duplicating the
 // webhook handling logic while providing a runtime-agnostic interface.
-func (a *App) handleWebhook(ctx context.Context, req Request) Response {
+func (a *App) handleWebhook(ctx context.Context, req shared.Request) shared.Response {
 	log := clog.FromContext(ctx)
 
 	// Create a Validator with our configuration
@@ -128,15 +129,15 @@ func (a *App) handleWebhook(ctx context.Context, req Request) Response {
 	// Delegate to existing webhook handler
 	validator.ServeHTTP(recorder, httpReq)
 
-	return Response{
+	return shared.Response{
 		StatusCode: recorder.statusCode,
 		Headers:    recorder.headers,
 		Body:       recorder.body.Bytes(),
 	}
 }
 
-// toHTTPRequest converts an app.Request to a standard http.Request.
-func (a *App) toHTTPRequest(ctx context.Context, req Request) (*http.Request, error) {
+// toHTTPRequest converts a shared.Request to a standard http.Request.
+func (a *App) toHTTPRequest(ctx context.Context, req shared.Request) (*http.Request, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, req.Method, req.Path, bytes.NewReader(req.Body))
 	if err != nil {
 		return nil, err

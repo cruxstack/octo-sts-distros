@@ -15,9 +15,9 @@ import (
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
 	"github.com/octo-sts/app/pkg/ghtransport"
 
+	"github.com/cruxstack/github-app-setup-go/ssmresolver"
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
-	"github.com/cruxstack/octo-sts-distros/internal/ssmresolver"
 	"github.com/cruxstack/octo-sts-distros/internal/sts"
 )
 
@@ -33,6 +33,8 @@ var (
 )
 
 func init() {
+	shared.SetupEnvMapping()
+
 	ctx := context.Background()
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
@@ -103,11 +105,35 @@ func initSTSHandler(ctx context.Context) error {
 	return nil
 }
 
+// tryInitSTSHandler re-resolves SSM parameters and initializes the STS handler.
+func tryInitSTSHandler(ctx context.Context) error {
+	log := clog.FromContext(ctx)
+
+	if err := ssmresolver.ResolveEnvironmentWithDefaults(ctx); err != nil {
+		return err
+	}
+
+	if err := initSTSHandler(ctx); err != nil {
+		return err
+	}
+
+	isConfigured = true
+	log.Infof("[config] STS handler initialized via lazy initialization")
+	return nil
+}
+
 func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
-	// If STS handler is not configured, return service unavailable
+	// Lazy init if credentials were saved after cold start
+	if stsInstance == nil && installerEnabled {
+		if err := tryInitSTSHandler(ctx); err != nil {
+			log.Warnf("lazy STS handler initialization failed: %v", err)
+		}
+	}
+
+	// If STS handler is still not configured, return service unavailable
 	if stsInstance == nil {
 		return events.APIGatewayV2HTTPResponse{
 			StatusCode: http.StatusServiceUnavailable,
@@ -125,8 +151,8 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 	log.Infof("request: method=%s path=%s", method, path)
 
 	// Convert API Gateway request to STS request
-	stsReq := sts.Request{
-		Type:        sts.RequestTypeHTTP,
+	stsReq := shared.Request{
+		Type:        shared.RequestTypeHTTP,
 		Method:      method,
 		Path:        path,
 		Headers:     shared.NormalizeHeaders(req.Headers),
