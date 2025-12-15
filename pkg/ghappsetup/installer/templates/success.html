@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub App Created Successfully</title>
+    <title>{{.AppDisplayName}} - GitHub App Created</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -127,7 +127,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>GitHub App Created</h1>
+        <h1>{{.AppDisplayName}} Created</h1>
         
         <div class="success">
             <h2>Success!</h2>
@@ -176,9 +176,8 @@
         {{end}}
 
         <p>
-            Credentials have been saved to the configured storage directory. 
-            After installing the app, you can stop this installer and configure the main octo-sts services 
-            to use the saved credentials.
+            Credentials have been saved to the configured storage backend. 
+            After installing the app, you can configure your services to use the saved credentials.
         </p>
     </div>
 </body>

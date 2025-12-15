@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,7 +24,7 @@ func NewLocalEnvFileStore(filepath string) *LocalEnvFileStore {
 	return &LocalEnvFileStore{FilePath: filepath}
 }
 
-// Save writes credentials to .env format with all GitHub App values and STS_DOMAIN.
+// Save writes credentials to .env format with all GitHub App values and custom fields.
 func (s *LocalEnvFileStore) Save(ctx context.Context, creds *AppCredentials) error {
 	dir := filepath.Dir(s.FilePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -40,19 +39,10 @@ func (s *LocalEnvFileStore) Save(ctx context.Context, creds *AppCredentials) err
 		existingValues = make(map[string]string)
 	}
 
-	if creds.STSDomain != "" {
-		existingValues[EnvSTSDomain] = creds.STSDomain
-	} else if creds.HookConfig.URL != "" {
-		// Auto-update STS_DOMAIN from webhook URL if blank or contains ngrok domain
-		if parsedURL, err := url.Parse(creds.HookConfig.URL); err == nil && parsedURL.Host != "" {
-			newHost := parsedURL.Host
-			existingHost := existingValues[EnvSTSDomain]
-			isNewNgrok := strings.Contains(newHost, "ngrok-free.app") || strings.Contains(newHost, "ngrok.io")
-			isExistingNgrok := strings.Contains(existingHost, "ngrok-free.app") || strings.Contains(existingHost, "ngrok.io")
-
-			if existingHost == "" || isNewNgrok || isExistingNgrok {
-				existingValues[EnvSTSDomain] = newHost
-			}
+	// Add custom fields first (so they can be overridden by core fields if needed)
+	for key, value := range creds.CustomFields {
+		if value != "" {
+			existingValues[key] = value
 		}
 	}
 

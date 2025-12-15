@@ -93,8 +93,9 @@ func NewAWSSSMStore(prefix string, opts ...SSMStoreOption) (*AWSSSMStore, error)
 
 // Save writes credentials to AWS SSM Parameter Store as encrypted SecureString parameters.
 // All parameters are created with overwrite=true and fail-fast on any error.
+// CustomFields are also saved with their keys as parameter names.
 func (s *AWSSSMStore) Save(ctx context.Context, creds *AppCredentials) error {
-	// Build parameter map
+	// Build parameter map with core GitHub credentials
 	parameters := map[string]string{
 		EnvGitHubAppID:         fmt.Sprintf("%d", creds.AppID),
 		EnvGitHubWebhookSecret: creds.WebhookSecret,
@@ -110,9 +111,11 @@ func (s *AWSSSMStore) Save(ctx context.Context, creds *AppCredentials) error {
 		parameters[EnvGitHubAppHTMLURL] = creds.HTMLURL
 	}
 
-	// Optionally add STS_DOMAIN if provided
-	if creds.STSDomain != "" {
-		parameters[EnvSTSDomain] = creds.STSDomain
+	// Add custom fields
+	for key, value := range creds.CustomFields {
+		if value != "" {
+			parameters[key] = value
+		}
 	}
 
 	// Save each parameter

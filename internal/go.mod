@@ -3,12 +3,12 @@ module github.com/cruxstack/octo-sts-distros/internal
 go 1.25
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.7
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/cruxstack/octo-sts-distros/pkg/ghappsetup v0.0.0
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-cmp v0.7.0
@@ -17,6 +17,8 @@ require (
 	github.com/octo-sts/app v0.5.4
 	sigs.k8s.io/yaml v1.6.0
 )
+
+replace github.com/cruxstack/octo-sts-distros/pkg/ghappsetup => ../pkg/ghappsetup
 
 require (
 	chainguard.dev/go-grpc-kit v0.17.15 // indirect
@@ -28,6 +30,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.54.0 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect

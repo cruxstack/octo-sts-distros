@@ -141,9 +141,5 @@ func TriggerReload() {
 
 	if r != nil {
 		r.Trigger()
-	} else {
-		// Note: We can't use clog here as we don't have a context
-		// This is an edge case that only happens if TriggerReload is called before
-		// the main application sets up the reloader, which shouldn't happen in normal use.
 	}
 }

@@ -24,6 +24,7 @@ func NewLocalFileStore(dir string) *LocalFileStore {
 }
 
 // Save writes credentials to individual files (app-id, private-key.pem, webhook-secret, client-id, client-secret).
+// CustomFields are saved as individual files using their keys as filenames (with underscores replaced by dashes).
 func (s *LocalFileStore) Save(ctx context.Context, creds *AppCredentials) error {
 	if err := os.MkdirAll(s.Dir, 0700); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", s.Dir, err)
@@ -51,6 +52,18 @@ func (s *LocalFileStore) Save(ctx context.Context, creds *AppCredentials) error 
 			content string
 			mode    os.FileMode
 		}{content: creds.HTMLURL, mode: 0644}
+	}
+
+	// Add custom fields as files
+	for key, value := range creds.CustomFields {
+		if value != "" {
+			// Convert env var name to file-friendly name (e.g., STS_DOMAIN -> sts-domain)
+			filename := strings.ToLower(strings.ReplaceAll(key, "_", "-"))
+			files[filename] = struct {
+				content string
+				mode    os.FileMode
+			}{content: value, mode: 0644}
+		}
 	}
 
 	for name, file := range files {
