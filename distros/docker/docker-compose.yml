@@ -1,0 +1,97 @@
+services:
+  # reverse proxy
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-9000}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - STS_DOMAIN=${STS_DOMAIN}
+      - TLS_MODE=${TLS_MODE:-off}
+      - TLS_EMAIL=${TLS_EMAIL:-}
+    depends_on:
+      - sts
+      - app
+    networks:
+      - octo-sts
+
+  # octo-sts app's sts service
+  sts:
+    build:
+      context: ../..
+      dockerfile: distros/docker/Dockerfile
+    restart: unless-stopped
+    command: ["/usr/local/bin/sts"]
+    expose:
+      - "8080"
+    environment:
+      - LOG_FORMAT=text
+      - PORT=8080
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - STS_DOMAIN=${STS_DOMAIN}
+      - METRICS=${METRICS:-false}
+      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
+      - KMS_KEY=${KMS_KEY:-}
+      - EVENT_INGRESS_URI=${EVENT_INGRESS_URI:-}
+    volumes:
+      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
+    networks:
+      - octo-sts
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # octo-sts app's github webhook handler (also serves installer at /setup when enabled)
+  app:
+    build:
+      context: ../..
+      dockerfile: distros/docker/Dockerfile
+    restart: unless-stopped
+    command: ["/usr/local/bin/app"]
+    expose:
+      - "8080"
+    environment:
+      - LOG_FORMAT=text
+      - PORT=8080
+      - GITHUB_APP_ID=${GITHUB_APP_ID}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET}
+      - GITHUB_WEBHOOK_ORGANIZATION_FILTER=${GITHUB_WEBHOOK_ORGANIZATION_FILTER:-}
+      - METRICS=${METRICS:-false}
+      - APP_SECRET_CERTIFICATE_ENV_VAR=${APP_SECRET_CERTIFICATE_ENV_VAR:-}
+      - APP_SECRET_CERTIFICATE_FILE=${APP_SECRET_CERTIFICATE_FILE:-}
+      - KMS_KEY=${KMS_KEY:-}
+      # Installer configuration (enabled via INSTALLER_ENABLED=true)
+      - INSTALLER_ENABLED=${INSTALLER_ENABLED:-false}
+      - STORAGE_MODE=${STORAGE_MODE:-envfile}
+      - STORAGE_DIR=/config/.env
+      - GITHUB_URL=${GITHUB_URL:-https://github.com}
+      - GITHUB_ORG=${GITHUB_ORG:-}
+    volumes:
+      - ${APP_SECRET_CERTIFICATE_HOST_PATH:-/dev/null}:${APP_SECRET_CERTIFICATE_FILE:-/dev/null}:ro
+      - ./.env:/config/.env
+    networks:
+      - octo-sts
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  octo-sts:
+    driver: bridge
