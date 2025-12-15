@@ -98,12 +98,12 @@ output "api_gateway_execution_arn" {
 
 output "sts_url" {
   description = "Full URL for STS token exchange endpoint"
-  value       = try("${aws_apigatewayv2_stage.this[0].invoke_url}/sts/exchange", null)
+  value       = try("${trimsuffix(aws_apigatewayv2_stage.this[0].invoke_url, "/")}/sts/exchange", null)
 }
 
 output "webhook_url" {
   description = "Full webhook URL to configure in GitHub App settings"
-  value       = try("${aws_apigatewayv2_stage.this[0].invoke_url}/webhook", null)
+  value       = try("${trimsuffix(aws_apigatewayv2_stage.this[0].invoke_url, "/")}/webhook", null)
 }
 
 output "webhook_secret" {
@@ -117,4 +117,16 @@ output "webhook_secret" {
 output "sts_domain" {
   description = "The STS domain used for audience validation"
   value       = local.sts_domain
+}
+
+# ---------------------------------------------------------------- installer ---
+
+output "setup_url" {
+  description = "URL for the setup wizard (only available when installer is enabled)"
+  value       = var.installer_config.enabled ? try("${trimsuffix(aws_apigatewayv2_stage.this[0].invoke_url, "/")}/setup", null) : null
+}
+
+output "healthz_url" {
+  description = "URL for health check endpoint"
+  value       = try("${trimsuffix(aws_apigatewayv2_stage.this[0].invoke_url, "/")}/healthz", null)
 }

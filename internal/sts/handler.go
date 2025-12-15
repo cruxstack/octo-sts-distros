@@ -50,6 +50,9 @@ func (s *STS) HandleRequest(ctx context.Context, req Request) Response {
 	switch {
 	case req.Method == http.MethodPost && (reqPath == "/" || reqPath == "" || reqPath == "/sts/exchange"):
 		return s.handleExchange(ctx, req)
+	case req.Method == http.MethodGet && (reqPath == "/exchange" || reqPath == "/sts/exchange"):
+		// Support GET requests with query parameters (used by octo-sts/action)
+		return s.handleExchange(ctx, req)
 	case req.Method == http.MethodGet && (reqPath == "/" || reqPath == ""):
 		return s.handleRoot(ctx)
 	default:
@@ -78,13 +81,23 @@ func (s *STS) handleRoot(_ context.Context) Response {
 }
 
 // handleExchange processes token exchange requests.
+// Supports both POST with JSON body and GET with query parameters.
 func (s *STS) handleExchange(ctx context.Context, req Request) Response {
 	log := clog.FromContext(ctx)
 
 	var exchangeReq ExchangeRequest
-	if err := json.Unmarshal(req.Body, &exchangeReq); err != nil {
-		log.Debugf("failed to parse request body: %v", err)
-		return ErrorResponse(http.StatusBadRequest, "invalid request body")
+
+	// Support both GET with query params and POST with JSON body
+	if req.Method == http.MethodGet {
+		// Parse from query parameters (used by octo-sts/action)
+		exchangeReq.Scope = req.QueryParams["scope"]
+		exchangeReq.Identity = req.QueryParams["identity"]
+	} else {
+		// Parse from JSON body
+		if err := json.Unmarshal(req.Body, &exchangeReq); err != nil {
+			log.Debugf("failed to parse request body: %v", err)
+			return ErrorResponse(http.StatusBadRequest, "invalid request body")
+		}
 	}
 
 	log.Infof("exchange request: identity=%s, scope=%s", exchangeReq.Identity, exchangeReq.Scope)

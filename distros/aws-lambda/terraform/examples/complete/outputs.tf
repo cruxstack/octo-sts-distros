@@ -24,6 +24,16 @@ output "webhook_secret" {
   sensitive   = true
 }
 
+output "setup_url" {
+  description = "URL for the setup wizard (only when installer is enabled)"
+  value       = module.octo_sts.setup_url
+}
+
+output "healthz_url" {
+  description = "URL for health check endpoint"
+  value       = module.octo_sts.healthz_url
+}
+
 output "lambda_sts_function_name" {
   description = "Name of the STS Lambda function"
   value       = module.octo_sts.lambda_sts_function_name

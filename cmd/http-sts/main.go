@@ -49,12 +49,21 @@ func (h *stsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		headers[strings.ToLower(k)] = r.Header.Get(k)
 	}
 
+	// Convert URL query parameters to map[string]string
+	queryParams := make(map[string]string)
+	for k, v := range r.URL.Query() {
+		if len(v) > 0 {
+			queryParams[k] = v[0]
+		}
+	}
+
 	req := sts.Request{
-		Type:    sts.RequestTypeHTTP,
-		Method:  r.Method,
-		Path:    r.URL.Path,
-		Headers: headers,
-		Body:    body,
+		Type:        sts.RequestTypeHTTP,
+		Method:      r.Method,
+		Path:        r.URL.Path,
+		Headers:     headers,
+		QueryParams: queryParams,
+		Body:        body,
 	}
 
 	resp := stsInstance.HandleRequest(r.Context(), req)

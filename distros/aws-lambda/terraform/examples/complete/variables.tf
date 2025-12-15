@@ -10,15 +10,29 @@ variable "environment" {
   default     = "prod"
 }
 
-variable "github_app_id" {
-  description = "GitHub App ID. Can be a direct value or SSM ARN."
+variable "installer_enabled" {
+  description = "Enable the setup wizard to create GitHub App via web UI. When true, github_app_id and github_app_private_key are ignored."
+  type        = bool
+  default     = false
+}
+
+variable "github_org" {
+  description = "GitHub organization to create the GitHub App under. Leave empty for personal account."
   type        = string
+  default     = ""
+}
+
+variable "github_app_id" {
+  description = "GitHub App ID. Can be a direct value or SSM ARN. Ignored when installer_enabled=true."
+  type        = string
+  default     = ""
 }
 
 variable "github_app_private_key" {
-  description = "GitHub App private key (PEM format). Can be a direct value or SSM ARN."
+  description = "GitHub App private key (PEM format). Can be a direct value or SSM ARN. Ignored when installer_enabled=true."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "sts_domain" {
@@ -34,7 +48,7 @@ variable "github_organization_filter" {
 }
 
 variable "ssm_parameter_arns" {
-  description = "List of SSM Parameter ARNs the Lambda functions need access to."
+  description = "List of SSM Parameter ARNs the Lambda functions need access to. Ignored when installer_enabled=true."
   type        = list(string)
   default     = []
 }

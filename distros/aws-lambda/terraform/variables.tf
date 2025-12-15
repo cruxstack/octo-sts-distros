@@ -1,25 +1,19 @@
 # ================================================================== general ===
 
-variable "app_version" {
-  description = "Version of Octo-STS to deploy. Use 'latest' for main branch or a specific version tag."
-  type        = string
-  default     = "latest"
-}
-
-variable "app_repo" {
-  description = "Git repository URL for the Octo-STS application."
-  type        = string
-  default     = "https://github.com/octo-sts/app.git"
-}
-
 variable "distro_repo" {
-  description = "Git repository URL for the Octo-STS distro (contains Lambda wrappers)."
+  description = "Git repository URL for the Octo-STS distros repository (contains Lambda wrappers)."
   type        = string
   default     = "https://github.com/cruxstack/octo-sts-distros.git"
 }
 
-variable "app_force_rebuild_id" {
-  description = "ID to force rebuilding Lambda artifacts. Change this value to trigger a rebuild."
+variable "distro_version" {
+  description = "Version of Octo-STS distros to deploy. Use 'latest' for main branch or a specific version tag."
+  type        = string
+  default     = "latest"
+}
+
+variable "force_rebuild_id" {
+  description = "Change this value to force rebuilding Lambda artifacts."
   type        = string
   default     = ""
 }
@@ -73,23 +67,14 @@ variable "lambda_environment_variables" {
 # ------------------------------------------------------------------- github ---
 
 variable "github_app_config" {
-  description = "GitHub App configuration. Private key and webhook secret values can be SSM ARNs for automatic resolution at runtime."
+  description = "GitHub App configuration. Private key and webhook secret values can be SSM ARNs for automatic resolution at runtime. When installer_config.enabled is true, these can be empty as credentials will be stored in SSM by the setup wizard."
   sensitive   = true
   type = object({
-    app_id         = string
-    private_key    = string
+    app_id         = optional(string, "")
+    private_key    = optional(string, "")
     webhook_secret = optional(string, "")
   })
-
-  validation {
-    condition     = var.github_app_config.app_id != ""
-    error_message = "GitHub App ID is required."
-  }
-
-  validation {
-    condition     = var.github_app_config.private_key != ""
-    error_message = "GitHub App private key is required."
-  }
+  default = {}
 }
 
 # ---------------------------------------------------------------------- sts ---
@@ -121,6 +106,43 @@ variable "api_gateway_config" {
     stage_name = optional(string, "$default")
   })
   default = {}
+}
+
+# ---------------------------------------------------------------- installer ---
+
+variable "installer_config" {
+  description = <<-EOT
+    Configuration for the GitHub App setup wizard. When enabled, the Lambda serves
+    an installer UI at /setup that guides users through creating a GitHub App and
+    saves credentials to AWS SSM Parameter Store.
+
+    When enabled:
+    - /setup serves the installer UI
+    - /callback handles GitHub OAuth redirects
+    - / redirects to /setup until the GitHub App is configured
+    - Credentials are automatically saved to SSM Parameter Store
+
+    After setup is complete, you can disable the installer by setting enabled=false
+    and redeploying, or by clicking "Disable Installer" in the success page.
+  EOT
+  type = object({
+    enabled              = optional(bool, false)                  # Enable the setup wizard
+    ssm_parameter_prefix = optional(string, "")                   # Required when enabled, e.g., "/octo-sts/prod/"
+    kms_key_id           = optional(string, "")                   # Optional KMS key for SSM parameter encryption
+    github_url           = optional(string, "https://github.com") # GitHub URL (for GitHub Enterprise Server)
+    github_org           = optional(string, "")                   # Organization to create the GitHub App under (empty = personal account)
+  })
+  default = {}
+
+  validation {
+    condition     = !var.installer_config.enabled || var.installer_config.ssm_parameter_prefix != ""
+    error_message = "ssm_parameter_prefix is required when installer is enabled."
+  }
+
+  validation {
+    condition     = var.installer_config.ssm_parameter_prefix == "" || startswith(var.installer_config.ssm_parameter_prefix, "/")
+    error_message = "ssm_parameter_prefix must start with '/' when specified."
+  }
 }
 
 variable "api_gateway_cors_config" {

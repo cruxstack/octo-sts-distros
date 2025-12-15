@@ -30,7 +30,8 @@ internal/
 - **Cost Optimized** - Uses ARM64 architecture by default for better price/performance
 - **SSM Integration** - Environment variables can reference SSM Parameter Store ARNs for automatic resolution at runtime
 - **Separate Functions** - STS and Webhook services run as separate Lambda functions for independent scaling
-- **App-Installer Support** - Works with the app-installer tool using `STORAGE_MODE=aws-ssm`
+- **Setup Wizard** - Built-in web UI to create and configure your GitHub App automatically
+- **Health Checks** - `/healthz` endpoint for load balancer and monitoring integration
 
 ## Architecture
 
@@ -39,34 +40,85 @@ internal/
                                     |   GitHub App     |
                                     +--------+---------+
                                              |
-                                             | Webhooks
+                                             | Webhooks / OAuth
                                              v
                                   +----------+---------+
                                   |    API Gateway     |
                                   |    HTTP API (v2)   |
                                   +----------+---------+
                                              |
-                     +-----------------------+-----------------------+
-                     |                                               |
-          /sts/*     |                                               |  /webhook
-          /{proxy+}  |                                               |
-                     v                                               v
-          +----------+---------+                          +----------+---------+
-          |   Lambda (STS)     |                          | Lambda (Webhook)   |
-          |   Token Exchange   |                          | Policy Validation  |
-          +----------+---------+                          +----------+---------+
-                     |                                               |
-                     +-------------------+---------------------------+
-                                         |
-                                         v
-                                  +------+------+
-                                  |  GitHub API |
-                                  +-------------+
+        +------------------------------------+------------------------------------+
+        |                                    |                                    |
+        |  /sts/*                            |  /webhook                          |  /setup/*
+        |  /{proxy+}                         |  /healthz                          |  /callback
+        |                                    |  /                                 |
+        v                                    v                                    |
++-------+--------+                  +--------+--------+                           |
+| Lambda (STS)   |                  | Lambda (Webhook)|<--------------------------+
+| Token Exchange |                  | + Installer     |
++-------+--------+                  +--------+--------+
+        |                                    |
+        +----------------+-------------------+
+                         |
+                         v
+                  +------+------+
+                  |  GitHub API |
+                  +-------------+
+                         |
+                         v
+               +---------+---------+
+               | SSM Parameter     |
+               | Store (secrets)   |
+               +-------------------+
 ```
 
 ## Usage
 
-### Basic Usage
+### Quick Start with Setup Wizard (Recommended)
+
+The easiest way to get started is using the built-in setup wizard. This deploys the
+infrastructure first, then guides you through creating the GitHub App via a web UI.
+
+```hcl
+module "octo_sts" {
+  source = "github.com/cruxstack/octo-sts-distros//distros/aws-lambda/terraform?ref=v1.0.0"
+
+  name = "octo-sts"
+
+  # Point to SSM parameters (will be created by the setup wizard)
+  github_app_config = {
+    app_id         = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_APP_ID"
+    private_key    = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/APP_SECRET_CERTIFICATE_ENV_VAR"
+    webhook_secret = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_WEBHOOK_SECRET"
+  }
+
+  # Enable the setup wizard
+  installer_config = {
+    enabled              = true
+    ssm_parameter_prefix = "/octo-sts/prod/"
+  }
+
+  # Grant Lambda access to SSM parameters
+  ssm_parameter_arns = [
+    "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/*"
+  ]
+}
+
+output "setup_url" {
+  value = module.octo_sts.setup_url
+}
+```
+
+After `terraform apply`:
+
+1. Open the `setup_url` output in your browser
+2. Follow the wizard to create your GitHub App
+3. Install the GitHub App on your organization(s)
+4. Optionally disable the installer by setting `installer_config.enabled = false` and redeploying
+
+### Basic Usage (Pre-existing GitHub App)
+
+If you already have a GitHub App configured:
 
 ```hcl
 module "octo_sts" {
@@ -108,40 +160,6 @@ module "octo_sts" {
 }
 ```
 
-### With App-Installer
-
-Use the app-installer to create your GitHub App and store credentials in SSM:
-
-```bash
-# 1. Configure app-installer for AWS SSM storage
-export STORAGE_MODE=aws-ssm
-export AWS_SSM_PARAMETER_PREFIX=/octo-sts/prod/
-export INSTALLER_WEBHOOK_URL=https://your-api-gateway-url/v1/webhook
-
-# 2. Run app-installer to create GitHub App
-./app-installer
-
-# 3. Deploy with Terraform referencing SSM parameters
-```
-
-```hcl
-module "octo_sts" {
-  source = "github.com/cruxstack/octo-sts-distros//distros/aws-lambda/terraform?ref=v1.0.0"
-
-  name = "octo-sts"
-
-  github_app_config = {
-    app_id         = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_APP_ID"
-    private_key    = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/APP_SECRET_CERTIFICATE_ENV_VAR"
-    webhook_secret = "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/GITHUB_WEBHOOK_SECRET"
-  }
-
-  ssm_parameter_arns = [
-    "arn:aws:ssm:us-east-1:123456789:parameter/octo-sts/prod/*"
-  ]
-}
-```
-
 ## Inputs
 
 | Name | Description | Type | Default | Required |
@@ -150,15 +168,15 @@ module "octo_sts" {
 | `github_app_config` | GitHub App configuration | `object` | n/a | yes |
 | `sts_config` | STS service configuration | `object` | `{}` | no |
 | `webhook_config` | Webhook service configuration | `object` | `{}` | no |
+| `installer_config` | Setup wizard configuration | `object` | `{}` | no |
 | `lambda_config` | Lambda function configuration | `object` | `{}` | no |
 | `lambda_log_retention_days` | CloudWatch log retention | `number` | `30` | no |
 | `lambda_environment_variables` | Additional environment variables | `map(string)` | `{}` | no |
 | `api_gateway_config` | API Gateway configuration | `object` | `{}` | no |
 | `ssm_parameter_arns` | SSM Parameter ARNs for Lambda access | `list(string)` | `[]` | no |
-| `app_version` | Octo-STS version to deploy | `string` | `"latest"` | no |
-| `app_repo` | Octo-STS repository URL | `string` | `"https://github.com/octo-sts/app.git"` | no |
-| `app_force_rebuild_id` | ID to force rebuilding Lambda artifacts | `string` | `""` | no |
 | `distro_repo` | Distros repository URL | `string` | `"https://github.com/cruxstack/octo-sts-distros.git"` | no |
+| `distro_version` | Distros version to deploy | `string` | `"latest"` | no |
+| `force_rebuild_id` | Change this value to force rebuilding Lambda artifacts | `string` | `""` | no |
 | `api_gateway_cors_config` | CORS configuration for API Gateway | `object` | `{}` | no |
 | `kms_key_arn` | KMS key ARN for CloudWatch Logs encryption | `string` | `null` | no |
 
@@ -166,11 +184,13 @@ module "octo_sts" {
 
 ```hcl
 github_app_config = {
-  app_id         = string  # GitHub App ID (required) - can be SSM ARN
-  private_key    = string  # GitHub App private key PEM (required) - can be SSM ARN
+  app_id         = string  # GitHub App ID - can be SSM ARN (required when installer disabled)
+  private_key    = string  # GitHub App private key PEM - can be SSM ARN (required when installer disabled)
   webhook_secret = string  # Webhook secret (optional) - auto-generated if not provided
 }
 ```
+
+When `installer_config.enabled = true`, these values can be omitted as credentials will be created via the setup wizard and stored in SSM.
 
 ### STS Config
 
@@ -189,6 +209,33 @@ webhook_config = {
                                 # Empty means process all organizations
 }
 ```
+
+### Installer Config
+
+```hcl
+installer_config = {
+  enabled              = bool    # Enable the setup wizard (default: false)
+  ssm_parameter_prefix = string  # SSM parameter prefix, e.g., "/octo-sts/prod/" (required when enabled)
+  kms_key_id           = string  # KMS key for SSM parameter encryption (optional)
+  github_url           = string  # GitHub URL for GHES (default: "https://github.com")
+  github_org           = string  # Organization to create the app under (optional)
+}
+```
+
+When the installer is enabled:
+- `/setup` serves the setup wizard UI
+- `/callback` handles GitHub OAuth redirects after app creation
+- `/` redirects to `/setup` until the GitHub App is configured
+- Credentials are automatically saved to SSM Parameter Store
+
+**Disabling the installer:** After setup is complete, you can disable the installer in two ways:
+
+1. **Via the UI** - Click "Disable Installer" on the success page. This sets `INSTALLER_ENABLED=false`
+   in SSM, which immediately hides the setup UI. The API Gateway routes remain but return 404.
+   This does not cause Terraform drift since routes are still managed by Terraform.
+
+2. **Via Terraform** - Set `installer_config.enabled = false` and redeploy. This removes the
+   installer routes from API Gateway and the SSM write IAM permissions.
 
 ### Lambda Config
 
@@ -231,6 +278,8 @@ api_gateway_cors_config = {
 | `sts_url` | Full URL for STS token exchange endpoint |
 | `sts_domain` | The STS domain used for audience validation |
 | `webhook_secret` | Webhook secret (generated if not provided) |
+| `setup_url` | URL for the setup wizard (when installer is enabled) |
+| `healthz_url` | URL for health check endpoint |
 | `lambda_sts_function_arn` | ARN of the STS Lambda function |
 | `lambda_sts_function_name` | Name of the STS Lambda function |
 | `lambda_webhook_function_arn` | ARN of the Webhook Lambda function |
@@ -244,8 +293,12 @@ api_gateway_cors_config = {
 |-------|--------|--------|-------------|
 | `/sts/{proxy+}` | ANY | STS | Token exchange service routes |
 | `/webhook` | ANY | Webhook | GitHub webhook endpoint |
+| `/healthz` | GET | Webhook | Health check endpoint |
+| `/setup` | GET | Webhook | Setup wizard UI (when installer enabled) |
+| `/setup/{proxy+}` | ANY | Webhook | Setup wizard sub-routes (when installer enabled) |
+| `/callback` | GET | Webhook | GitHub OAuth callback (when installer enabled) |
+| `/` | GET | Webhook | Root handler (redirects to /setup or returns 404) |
 | `/{proxy+}` | ANY | STS | Catch-all fallback to STS |
-| `/` | GET | STS | Root handler (documentation) |
 
 ## SSM ARN Resolution
 
@@ -265,6 +318,25 @@ github_app_config = {
 }
 ```
 
+### SSM Parameters Created by Setup Wizard
+
+When using the setup wizard (`installer_config.enabled = true`), the following SSM
+parameters are created automatically under the configured prefix:
+
+| Parameter | Description |
+|-----------|-------------|
+| `GITHUB_APP_ID` | GitHub App ID |
+| `GITHUB_WEBHOOK_SECRET` | Webhook secret for signature validation |
+| `GITHUB_CLIENT_ID` | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth client secret |
+| `APP_SECRET_CERTIFICATE_ENV_VAR` | GitHub App private key (PEM format) |
+| `GITHUB_APP_SLUG` | GitHub App slug (optional) |
+| `GITHUB_APP_HTML_URL` | GitHub App URL (optional) |
+| `STS_DOMAIN` | STS domain for audience validation (optional) |
+| `INSTALLER_ENABLED` | Set to "false" when installer is disabled |
+
+All parameters are stored as `SecureString` type with encryption.
+
 ## Requirements
 
 | Name | Version |
@@ -276,11 +348,12 @@ github_app_config = {
 
 The Lambda functions are built using Docker during Terraform apply. The build process:
 
-1. Clones the Octo-STS app and distros repositories
-2. Builds the Lambda wrapper binaries for ARM64
-3. Packages them as ZIP files for Lambda deployment
+1. Clones the Octo-STS distros repository
+2. Fetches the `octo-sts/app` dependency via Go modules
+3. Builds the Lambda wrapper binaries for ARM64
+4. Packages them as ZIP files for Lambda deployment
 
-To force a rebuild, change the `app_force_rebuild_id` variable.
+To force a rebuild, change the `force_rebuild_id` variable.
 
 ## License
 

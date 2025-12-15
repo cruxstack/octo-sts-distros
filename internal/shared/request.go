@@ -32,6 +32,9 @@ type Request struct {
 	// Headers contains request headers with lowercase keys for consistent access.
 	Headers map[string]string
 
+	// QueryParams contains URL query parameters.
+	QueryParams map[string]string
+
 	// Body contains the raw request body.
 	Body []byte
 }
