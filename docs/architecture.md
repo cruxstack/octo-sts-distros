@@ -2,8 +2,9 @@
 
 > **Note:** This document describes the architecture of the upstream
 > octo-sts/app project. For the most current information, see the
-> [upstream documentation](https://github.com/octo-sts/app). For deployment-specific
-> information, see the distribution READMEs in the `distros/` directory.
+> [upstream documentation](https://github.com/octo-sts/app). For
+> deployment-specific information, see the distribution READMEs in the
+> `distros/` directory.
 
 This document provides a comprehensive architecture breakdown of the
 octo-sts/app project, a Security Token Service (STS) for GitHub that enables
@@ -20,50 +21,50 @@ trust policies and issues appropriately-scoped GitHub installation tokens.
 ## High-Level Architecture
 
 ```
-+-----------------------------------------------------------------------------+
-|                              External Clients                               |
-|           (GitHub Actions, Cloud Workloads, CI/CD, Custom OIDC)             |
-+-----------------------------------------------------------------------------+
-                                      |
-                                      | OIDC Token + Exchange Request
-                                      v
-+-----------------------------------------------------------------------------+
-|                              Load Balancer                                  |
-|                           (e.g., octo-sts.dev)                              |
-+-----------------------------------------------------------------------------+
-                                      |
-                    +-----------------+-----------------+
-                    v                                   v
-+-------------------------------+     +---------------------------------------+
-|    STS Exchange Service       |     |       Webhook Validator Service       |
-|        (cmd/app)              |     |            (cmd/webhook)              |
-|                               |     |                                       |
-|  * Token Exchange Endpoint    |     |  * Trust Policy Validation            |
-|  * OIDC Token Verification    |     |  * GitHub Check Runs                  |
-|  * Trust Policy Evaluation    |     |  * PR/Push Event Handling             |
-|  * GitHub Token Generation    |     |                                       |
-+-------------------------------+     +---------------------------------------+
-          |                                           |
-          |                                           |
-          v                                           v
-+-----------------------------------------------------------------------------+
-|                           GitHub App Transport                              |
-|                            (pkg/ghtransport)                                |
-|                                                                             |
-|   * App Authentication (KMS/File/Env)                                       |
-|   * Installation Token Generation                                           |
-|   * JWT Signing (Cloud KMS or Local Key)                                    |
-+-----------------------------------------------------------------------------+
-                                      |
-          +---------------------------+---------------------------+
-          v                           v                           v
-+-----------------+     +---------------------+     +-------------------------+
-| Key Management  |     |   GitHub API        |     |   OIDC Providers        |
-|                 |     |                     |     |                         |
-| * Cloud KMS     |     | * Apps API          |     | * GitHub Actions        |
-| * Local PEM Key |     | * Installation API  |     | * Google Cloud          |
-| * Env Var Key   |     | * Repository API    |     | * Any OIDC Provider     |
-+-----------------+     +---------------------+     +-------------------------+
++--------------------------------------------------------------------------+
+|                            External Clients                              |
+|         (GitHub Actions, Cloud Workloads, CI/CD, Custom OIDC)            |
++--------------------------------------------------------------------------+
+                                     |
+                                     | OIDC Token + Exchange Request
+                                     v
++--------------------------------------------------------------------------+
+|                            Load Balancer                                 |
+|                         (e.g., octo-sts.dev)                             |
++--------------------------------------------------------------------------+
+                                     |
+                   +-----------------+-----------------+
+                   v                                   v
++-----------------------------+     +--------------------------------------+
+|   STS Exchange Service      |     |      Webhook Validator Service       |
+|        (cmd/app)            |     |           (cmd/webhook)              |
+|                             |     |                                      |
+|  * Token Exchange Endpoint  |     |  * Trust Policy Validation           |
+|  * OIDC Token Verification  |     |  * GitHub Check Runs                 |
+|  * Trust Policy Evaluation  |     |  * PR/Push Event Handling            |
+|  * GitHub Token Generation  |     |                                      |
++-----------------------------+     +--------------------------------------+
+         |                                         |
+         |                                         |
+         v                                         v
++--------------------------------------------------------------------------+
+|                         GitHub App Transport                             |
+|                          (pkg/ghtransport)                               |
+|                                                                          |
+|   * App Authentication (KMS/File/Env)                                    |
+|   * Installation Token Generation                                        |
+|   * JWT Signing (Cloud KMS or Local Key)                                 |
++--------------------------------------------------------------------------+
+                                     |
+         +---------------------------+---------------------------+
+         v                           v                           v
++-----------------+     +---------------------+     +-----------------------+
+| Key Management  |     |     GitHub API      |     |    OIDC Providers     |
+|                 |     |                     |     |                       |
+| * Cloud KMS     |     | * Apps API          |     | * GitHub Actions      |
+| * Local PEM Key |     | * Installation API  |     | * Google Cloud        |
+| * Env Var Key   |     | * Repository API    |     | * Any OIDC Provider   |
++-----------------+     +---------------------+     +-----------------------+
 ```
 
 ## Request Flow
@@ -71,95 +72,96 @@ trust policies and issues appropriately-scoped GitHub installation tokens.
 ### Token Exchange Flow
 
 ```
-+--------+     +-------------+     +-------------+     +------------+     +----------+
-| Client |     | STS Service |     | OIDC        |     | GitHub     |     | GitHub   |
-|        |     |             |     | Provider    |     | Repo       |     | API      |
-+---+----+     +------+------+     +------+------+     +-----+------+     +----+-----+
-    |                 |                   |                  |                 |
-    | Exchange Request|                   |                  |                 |
-    | (Bearer Token,  |                   |                  |                 |
-    | Scope, Identity)|                   |                  |                 |
-    |---------------->|                   |                  |                 |
-    |                 |                   |                  |                 |
-    |                 | Fetch OIDC Config |                  |                 |
-    |                 |------------------>|                  |                 |
-    |                 |<------------------|                  |                 |
-    |                 |                   |                  |                 |
-    |                 | Verify JWT        |                  |                 |
-    |                 |------------------>|                  |                 |
-    |                 |<------------------|                  |                 |
-    |                 |                   |                  |                 |
-    |                 | Lookup Installation                  |                 |
-    |                 |------------------------------------------------------->|
-    |                 |<-------------------------------------------------------|
-    |                 |                   |                  |                 |
-    |                 | Fetch Trust Policy|                  |                 |
-    |                 |------------------------------------->|                 |
-    |                 |<-------------------------------------|                 |
-    |                 |                   |                  |                 |
-    |                 | Validate Token vs Policy             |                 |
-    |                 | (issuer, subject, claims)            |                 |
-    |                 |                   |                  |                 |
-    |                 | Generate Installation Token          |                 |
-    |                 |------------------------------------------------------->|
-    |                 |<-------------------------------------------------------|
-    |                 |                   |                  |                 |
-    | GitHub Token    |                   |                  |                 |
-    |<----------------|                   |                  |                 |
-    |                 |                   |                  |                 |
++--------+    +-------------+    +----------+    +----------+    +--------+
+| Client |    | STS Service |    |   OIDC   |    |  GitHub  |    | GitHub |
+|        |    |             |    | Provider |    |   Repo   |    |  API   |
++---+----+    +------+------+    +----+-----+    +----+-----+    +---+----+
+    |                |                |               |              |
+    | Exchange Req   |                |               |              |
+    | (Bearer Token, |                |               |              |
+    | Scope,Identity)|                |               |              |
+    |--------------->|                |               |              |
+    |                |                |               |              |
+    |                | Fetch OIDC Cfg |               |              |
+    |                |--------------->|               |              |
+    |                |<---------------|               |              |
+    |                |                |               |              |
+    |                | Verify JWT     |               |              |
+    |                |--------------->|               |              |
+    |                |<---------------|               |              |
+    |                |                |               |              |
+    |                | Lookup Installation            |              |
+    |                |---------------------------------------------->|
+    |                |<----------------------------------------------|
+    |                |                |               |              |
+    |                | Fetch Trust Policy             |              |
+    |                |-------------------------------->|              |
+    |                |<--------------------------------|              |
+    |                |                |               |              |
+    |                | Validate Token vs Policy       |              |
+    |                | (issuer, subject, claims)      |              |
+    |                |                |               |              |
+    |                | Generate Installation Token    |              |
+    |                |---------------------------------------------->|
+    |                |<----------------------------------------------|
+    |                |                |               |              |
+    | GitHub Token   |                |               |              |
+    |<---------------|                |               |              |
+    |                |                |               |              |
 ```
 
 ### Webhook Validation Flow
 
 ```
-+--------+     +--------------+     +------------+     +--------------+
-| GitHub |     | Webhook      |     | GitHub     |     | Repository   |
-|        |     | Service      |     | API        |     |              |
-+---+----+     +------+-------+     +-----+------+     +------+-------+
-    |                 |                   |                   |
-    | Webhook Event   |                   |                   |
-    | (PR/Push/Check) |                   |                   |
-    |---------------->|                   |                   |
-    |                 |                   |                   |
-    |                 | Validate Signature|                   |
-    |                 |                   |                   |
-    |                 | Get Changed Files |                   |
-    |                 |------------------>|                   |
-    |                 |<------------------|                   |
-    |                 |                   |                   |
-    |                 | Fetch .sts.yaml   |                   |
-    |                 | files             |                   |
-    |                 |-------------------------------------->|
-    |                 |<--------------------------------------|
-    |                 |                   |                   |
-    |                 | Parse & Validate  |                   |
-    |                 | Trust Policies    |                   |
-    |                 |                   |                   |
-    |                 | Create CheckRun   |                   |
-    |                 |------------------>|                   |
-    |                 |<------------------|                   |
-    |                 |                   |                   |
-    | 200 OK          |                   |                   |
-    |<----------------|                   |                   |
-    |                 |                   |                   |
++--------+    +--------------+    +------------+    +--------------+
+| GitHub |    |   Webhook    |    |   GitHub   |    |  Repository  |
+|        |    |   Service    |    |    API     |    |              |
++---+----+    +------+-------+    +-----+------+    +------+-------+
+    |                |                  |                  |
+    | Webhook Event  |                  |                  |
+    | (PR/Push/Check)|                  |                  |
+    |--------------->|                  |                  |
+    |                |                  |                  |
+    |                | Validate Signature                  |
+    |                |                  |                  |
+    |                | Get Changed Files|                  |
+    |                |----------------->|                  |
+    |                |<-----------------|                  |
+    |                |                  |                  |
+    |                | Fetch .sts.yaml  |                  |
+    |                | files            |                  |
+    |                |----------------------------------->|
+    |                |<-----------------------------------|
+    |                |                  |                  |
+    |                | Parse & Validate |                  |
+    |                | Trust Policies   |                  |
+    |                |                  |                  |
+    |                | Create CheckRun  |                  |
+    |                |----------------->|                  |
+    |                |<-----------------|                  |
+    |                |                  |                  |
+    | 200 OK         |                  |                  |
+    |<---------------|                  |                  |
+    |                |                  |                  |
 ```
 
 ## Trust Policy Model
 
-Trust policies define the federation rules that map external OIDC identities to GitHub permissions.
+Trust policies define the federation rules that map external OIDC identities
+to GitHub permissions.
 
 ### Policy Location
 
 ```
 Repository: org/repo
-\-- .github/
-    \-- chainguard/
-        \-- {identity}.sts.yaml    # Repository-scoped policy
+└── .github/
+    └── chainguard/
+        └── {identity}.sts.yaml    # Repository-scoped policy
 
 Organization: org
-\-- .github/
-    \-- chainguard/
-        \-- {identity}.sts.yaml    # Organization-scoped policy
+└── .github/
+    └── chainguard/
+        └── {identity}.sts.yaml    # Organization-scoped policy
 ```
 
 ### Policy Structure
@@ -168,21 +170,21 @@ Organization: org
 # Basic Trust Policy (TrustPolicy)
 issuer: https://token.actions.githubusercontent.com     # Exact match
 # OR
-issuer_pattern: "https://.*\\.example\\.com"           # Regex pattern
+issuer_pattern: "https://.*\\.example\\.com"            # Regex pattern
 
-subject: repo:org/repo:ref:refs/heads/main             # Exact match
+subject: repo:org/repo:ref:refs/heads/main              # Exact match
 # OR
-subject_pattern: "repo:org/repo:.*"                    # Regex pattern
+subject_pattern: "repo:org/repo:.*"                     # Regex pattern
 
-audience: octo-sts.dev                                 # Optional, defaults to domain
+audience: octo-sts.dev                                  # Optional
 # OR
-audience_pattern: ".*"                                 # Optional regex
+audience_pattern: ".*"                                  # Optional regex
 
-claim_pattern:                                         # Optional custom claims
+claim_pattern:                                          # Optional claims
   email: ".*@example\\.com"
   workflow: "release\\.yml"
 
-permissions:                                           # GitHub App permissions
+permissions:                                            # GitHub permissions
   contents: read
   issues: write
   pull_requests: write
@@ -197,7 +199,7 @@ subject: repo:other-org/repo:ref:refs/heads/main
 permissions:
   contents: read
 
-repositories:                                          # Limit to specific repos
+repositories:                                           # Limit to repos
   - repo1
   - repo2
 ```
@@ -206,7 +208,7 @@ repositories:                                          # Limit to specific repos
 
 ### Token Validation
 
-1. **Issuer Validation**: OIDC issuer must be HTTPS (except localhost for testing)
+1. **Issuer Validation**: OIDC issuer must be HTTPS (except localhost)
 2. **Subject Validation**: Max 255 characters, no control characters
 3. **Audience Validation**: Must match configured domain or explicit audience
 4. **Signature Verification**: JWT signature verified against issuer's JWKS
@@ -221,38 +223,43 @@ repositories:                                          # Limit to specific repos
 
 ### Caching Strategy
 
-**Installation ID Cache** (LRU, 200 entries)
-- Key: owner
-- Value: GitHub App installation ID
-
-**Trust Policy Cache** (Expirable LRU, 200 entries, 5min TTL)
-- Key: (owner, repo, identity)
-- Value: raw policy YAML
-
-**OIDC Provider Cache** (LRU, 100 entries)
-- Key: issuer URL
-- Value: OIDC provider with verifier
+| Cache              | Type           | Size | TTL     | Key                        |
+|--------------------|----------------|------|---------|----------------------------|
+| Installation IDs   | LRU            | 200  | None    | owner                      |
+| Trust Policies     | Expirable LRU  | 200  | 5 min   | (owner, repo, identity)    |
+| OIDC Providers     | LRU            | 100  | None    | issuer URL                 |
 
 ## Key Management & JWT Signing
 
-Octo-STS requires the GitHub App's private key to authenticate with GitHub and sign JWTs for obtaining installation tokens. The system supports multiple key storage backends to accommodate different deployment environments and security requirements.
+Octo-STS requires the GitHub App's private key to authenticate with GitHub and
+sign JWTs for obtaining installation tokens. The system supports multiple key
+storage backends to accommodate different deployment environments and security
+requirements.
 
 ### How JWT Signing Works
 
-When Octo-STS needs to interact with the GitHub API on behalf of an installation:
+When Octo-STS needs to interact with the GitHub API on behalf of an
+installation:
 
-1. **App Authentication**: The service creates a JWT signed with the GitHub App's private key
-2. **JWT Structure**: The token includes the App ID, issued-at time, and expiration (10 minutes max)
-3. **Signature Algorithm**: RS256 (RSA with SHA-256) is used for all signing operations
-4. **Token Exchange**: GitHub validates the JWT and returns a short-lived installation access token
+1. **App Authentication**: The service creates a JWT signed with the GitHub
+   App's private key
+2. **JWT Structure**: The token includes the App ID, issued-at time, and
+   expiration (10 minutes max)
+3. **Signature Algorithm**: RS256 (RSA with SHA-256) is used for all signing
+   operations
+4. **Token Exchange**: GitHub validates the JWT and returns a short-lived
+   installation access token
 
 ### GitHub App Private Key Storage
 
-The GitHub App Transport (`pkg/ghtransport`) supports three mutually exclusive methods for storing the GitHub App's private key. Only one method should be configured; if multiple are set, the service will fail to start.
+The GitHub App Transport (`pkg/ghtransport`) supports three mutually exclusive
+methods for storing the GitHub App's private key. Only one method should be
+configured; if multiple are set, the service will fail to start.
 
 #### 1. Environment Variable (`APP_SECRET_CERTIFICATE_ENV_VAR`)
 
-The GitHub App's private key is passed directly as a PEM-encoded string in an environment variable.
+The GitHub App's private key is passed directly as a PEM-encoded string in an
+environment variable.
 
 ```
 APP_SECRET_CERTIFICATE_ENV_VAR="-----BEGIN RSA PRIVATE KEY-----
@@ -288,7 +295,9 @@ APP_SECRET_CERTIFICATE_FILE=/path/to/github-app-private-key.pem
 
 #### 3. Cloud KMS (`KMS_KEY`)
 
-The GitHub App's private key is stored in a cloud Key Management Service. Signing operations are performed remotely by the KMS; the private key material never leaves the KMS boundary.
+The GitHub App's private key is stored in a cloud Key Management Service.
+Signing operations are performed remotely by the KMS; the private key material
+never leaves the KMS boundary.
 
 ```
 KMS_KEY=projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key/cryptoKeyVersions/1
@@ -310,65 +319,69 @@ Octo-STS currently supports **GCP Cloud KMS** via the `pkg/gcpkms` package.
 
 ### Extending KMS Support
 
-The signing architecture uses the `ghinstallation.Signer` interface, which allows adding support for additional KMS providers. To add a new provider:
+The signing architecture uses the `ghinstallation.Signer` interface, which
+allows adding support for additional KMS providers. To add a new provider:
 
-1. **Implement the `ghinstallation.Signer` interface** to sign JWTs using the new KMS
-2. **Update `pkg/ghtransport`** to detect the new KMS configuration and instantiate the appropriate signer
+1. **Implement the `ghinstallation.Signer` interface** to sign JWTs using the
+   new KMS
+2. **Update `pkg/ghtransport`** to detect the new KMS configuration and
+   instantiate the appropriate signer
 
 See `pkg/gcpkms/gcpkms.go` for a reference implementation.
 
 ### Recommendations by Environment
 
-| Environment | Recommended Method | Rationale |
-|-------------|-------------------|-----------|
-| Local development | File | Simple setup, easy key rotation |
-| CI/CD testing | Environment variable | Secrets injected by CI platform |
-| Production (cloud) | Cloud KMS | HSM protection, audit logging, no key extraction |
-| Production (on-prem) | File or Env var | Depends on available secrets management |
-| High-security | Cloud KMS | Key never leaves secure boundary |
+| Environment          | Recommended Method | Rationale                         |
+|----------------------|--------------------|-----------------------------------|
+| Local development    | File               | Simple setup, easy key rotation   |
+| CI/CD testing        | Environment var    | Secrets injected by CI platform   |
+| Production (cloud)   | Cloud KMS          | HSM protection, audit logging     |
+| Production (on-prem) | File or Env var    | Depends on secrets management     |
+| High-security        | Cloud KMS          | Key never leaves secure boundary  |
 
 ## Infrastructure Architecture (GCP Reference)
 
 The reference deployment uses GCP Cloud Run with the following architecture:
 
 ```
-+-----------------------------------------------------------------------------+
-|                           Google Cloud Platform                             |
-+-----------------------------------------------------------------------------+
-|                                                                             |
-|  +---------------------------------------------------------------------+    |
-|  |                    Global Cloud Load Balancer                       |    |
-|  |                      (octo-sts.dev, webhook.octo-sts.dev)           |    |
-|  +---------------------------------------------------------------------+    |
-|                                      |                                      |
-|         +----------------------------+----------------------------+         |
-|         v                            v                            v         |
-|  +--------------+         +--------------+              +--------------+    |
-|  | Region 1     |         | Region 2     |              | Region N     |    |
-|  |              |         |              |              |              |    |
-|  | +----------+ |         | +----------+ |              | +----------+ |    |
-|  | |STS Svc   | |         | |STS Svc   | |              | |STS Svc   | |    |
-|  | |Cloud Run | |         | |Cloud Run | |              | |Cloud Run | |    |
-|  | +----------+ |         | +----------+ |              | +----------+ |    |
-|  | +----------+ |         | +----------+ |              | +----------+ |    |
-|  | |Webhook   | |         | |Webhook   | |              | |Webhook   | |    |
-|  | |Svc       | |         | |Svc       | |              | |Svc       | |    |
-|  | +----------+ |         | +----------+ |              | +----------+ |    |
-|  +--------------+         +--------------+              +--------------+    |
-|                                      |                                      |
-|                                      v                                      |
-|  +---------------------------------------------------------------------+    |
-|  |                        Shared Services                              |    |
-|  |                                                                     |    |
-|  |  +------------+  +-----------------+  +--------------------------+  |    |
-|  |  | Cloud KMS  |  | Secret Manager  |  | CloudEvents Broker       |  |    |
-|  |  |            |  |                 |  |                          |  |    |
-|  |  | * App Key  |  | * Webhook       |  | * Event Ingress          |  |    |
-|  |  |            |  |   Secret        |  | * BigQuery Recording     |  |    |
-|  |  +------------+  +-----------------+  +--------------------------+  |    |
-|  +---------------------------------------------------------------------+    |
-|                                                                             |
-+-----------------------------------------------------------------------------+
++--------------------------------------------------------------------------+
+|                         Google Cloud Platform                            |
++--------------------------------------------------------------------------+
+|                                                                          |
+|  +--------------------------------------------------------------------+  |
+|  |                  Global Cloud Load Balancer                        |  |
+|  |               (octo-sts.dev, webhook.octo-sts.dev)                 |  |
+|  +--------------------------------------------------------------------+  |
+|                                    |                                     |
+|       +----------------------------+----------------------------+        |
+|       v                            v                            v        |
+|  +-----------+            +-----------+                 +-----------+    |
+|  | Region 1  |            | Region 2  |                 | Region N  |    |
+|  |           |            |           |                 |           |    |
+|  | +-------+ |            | +-------+ |                 | +-------+ |    |
+|  | |STS Svc| |            | |STS Svc| |                 | |STS Svc| |    |
+|  | |  Run  | |            | |  Run  | |                 | |  Run  | |    |
+|  | +-------+ |            | +-------+ |                 | +-------+ |    |
+|  | +-------+ |            | +-------+ |                 | +-------+ |    |
+|  | |Webhook| |            | |Webhook| |                 | |Webhook| |    |
+|  | |  Svc  | |            | |  Svc  | |                 | |  Svc  | |    |
+|  | +-------+ |            | +-------+ |                 | +-------+ |    |
+|  +-----------+            +-----------+                 +-----------+    |
+|                                    |                                     |
+|                                    v                                     |
+|  +--------------------------------------------------------------------+  |
+|  |                         Shared Services                            |  |
+|  |                                                                    |  |
+|  |  +----------+  +--------------+  +-----------------------------+   |  |
+|  |  | Cloud    |  | Secret       |  | CloudEvents Broker          |   |  |
+|  |  | KMS      |  | Manager      |  |                             |   |  |
+|  |  |          |  |              |  | * Event Ingress             |   |  |
+|  |  | * App    |  | * Webhook    |  | * BigQuery Recording        |   |  |
+|  |  |   Key    |  |   Secret     |  |                             |   |  |
+|  |  +----------+  +--------------+  +-----------------------------+   |  |
+|  +--------------------------------------------------------------------+  |
+|                                                                          |
++--------------------------------------------------------------------------+
 ```
 
 ## API Specification
@@ -381,11 +394,11 @@ The reference deployment uses GCP Cloud Run with the following architecture:
 
 **Request Parameters**:
 
-| Parameter            | Type         | Required | Description                                          |
-|----------------------|--------------|----------|------------------------------------------------------|
-| `scope`              | string       | Yes      | Repository or organization (e.g., `org/repo` or `org`) |
-| `identity`           | string       | Yes      | Trust policy name (maps to `{identity}.sts.yaml`)    |
-| Authorization Header | Bearer token | Yes      | OIDC token to exchange                               |
+| Parameter     | Type         | Required | Description                           |
+|---------------|--------------|----------|---------------------------------------|
+| `scope`       | string       | Yes      | Repository or org (e.g., `org/repo`)  |
+| `identity`    | string       | Yes      | Trust policy name (`{id}.sts.yaml`)   |
+| Authorization | Bearer token | Yes      | OIDC token to exchange                |
 
 **Response**:
 ```json
@@ -439,29 +452,30 @@ Each token exchange emits a CloudEvent of type `dev.octo-sts.exchange`:
 ### Alerting (GCP Reference)
 
 - **KMS Access Monitoring**: Alerts on unauthorized access to signing keys
-- **Error Rate Monitoring**: BigQuery views for error analysis by installation and subject
+- **Error Rate Monitoring**: BigQuery views for error analysis by installation
+  and subject
 - **Service Health**: Cloud Run built-in monitoring and alerting
 
 ## Deployment Considerations
 
 ### Environment Variables
 
-| Variable                             | Required     | Description                  |
-|--------------------------------------|--------------|------------------------------|
-| `PORT`                               | Yes          | HTTP server port             |
-| `GITHUB_APP_ID`                      | Yes          | GitHub App ID                |
-| `KMS_KEY`                            | One of three | GCP KMS key reference        |
-| `APP_SECRET_CERTIFICATE_FILE`        | One of three | Path to PEM key file         |
-| `APP_SECRET_CERTIFICATE_ENV_VAR`     | One of three | PEM key as env var           |
-| `STS_DOMAIN`                         | Yes (app)    | Domain for audience check    |
-| `GITHUB_WEBHOOK_SECRET`              | Yes (webhook)| Webhook signature secret     |
-| `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | No           | Comma-separated org filter   |
-| `METRICS`                            | No           | Enable metrics (default true)|
-| `EVENT_INGRESS_URI`                  | No           | CloudEvents ingress URI      |
+| Variable                             | Required     | Description              |
+|--------------------------------------|--------------|--------------------------|
+| `PORT`                               | Yes          | HTTP server port         |
+| `GITHUB_APP_ID`                      | Yes          | GitHub App ID            |
+| `KMS_KEY`                            | One of three | GCP KMS key reference    |
+| `APP_SECRET_CERTIFICATE_FILE`        | One of three | Path to PEM key file     |
+| `APP_SECRET_CERTIFICATE_ENV_VAR`     | One of three | PEM key as env var       |
+| `STS_DOMAIN`                         | Yes (app)    | Domain for audience      |
+| `GITHUB_WEBHOOK_SECRET`              | Yes (webhook)| Webhook signature secret |
+| `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | No           | Comma-separated orgs     |
+| `METRICS`                            | No           | Enable metrics (default) |
+| `EVENT_INGRESS_URI`                  | No           | CloudEvents ingress URI  |
 
 ### Scaling Considerations
 
-- **Stateless design**: All state is external (GitHub, KMS, caches are ephemeral)
+- **Stateless design**: All state is external (GitHub, KMS, caches ephemeral)
 - **Regional deployment**: Deploy to multiple regions for availability
 - **Cache sizing**: LRU caches prevent memory growth
 - **Rate limiting**: Subject to GitHub API rate limits per installation

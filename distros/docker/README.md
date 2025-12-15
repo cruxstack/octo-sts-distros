@@ -77,12 +77,12 @@ is available at `/setup` on your ngrok URL.
 
 ### 4. Create the GitHub App
 
-Open your ngrok URL with `/setup` path (e.g., `https://abc123.ngrok-free.app/setup`)
-in your browser.
+Open your ngrok URL with `/setup` path
+(e.g., `https://abc123.ngrok-free.app/setup`) in your browser.
 
 Follow the prompts to create your GitHub App. When prompted for the webhook
-URL, enter your ngrok URL with `/webhook` path (e.g.,
-`https://abc123.ngrok-free.app/webhook`).
+URL, enter your ngrok URL with `/webhook` path
+(e.g., `https://abc123.ngrok-free.app/webhook`).
 
 The installer automatically saves the GitHub App credentials to your `.env`
 file.
@@ -104,13 +104,13 @@ Your Octo-STS instance is now running at your ngrok URL.
 
 ## Endpoints
 
-| Path | Description |
-|------|-------------|
-| `/` | STS token exchange endpoint |
-| `/webhook` | GitHub webhook receiver |
-| `/setup` | Installer UI (when enabled) |
-| `/setup/callback` | OAuth callback (when enabled) |
-| `/healthz` | Health check |
+| Path             | Description                     |
+|------------------|---------------------------------|
+| `/`              | STS token exchange endpoint     |
+| `/webhook`       | GitHub webhook receiver         |
+| `/setup`         | Installer UI (when enabled)     |
+| `/setup/callback`| OAuth callback (when enabled)   |
+| `/healthz`       | Health check                    |
 
 ## Next Steps
 

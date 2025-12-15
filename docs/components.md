@@ -2,8 +2,9 @@
 
 > **Note:** This document describes components from the upstream octo-sts/app
 > project. For the most current information, see the
-> [upstream documentation](https://github.com/octo-sts/app). For distribution-specific
-> components, see the respective README files in `distros/`.
+> [upstream documentation](https://github.com/octo-sts/app). For
+> distribution-specific components, see the respective README files in
+> `distros/`.
 
 This document provides a detailed breakdown of the octo-sts/app components,
 including binaries, packages, and their responsibilities.
@@ -12,7 +13,8 @@ including binaries, packages, and their responsibilities.
 
 ### cmd/app - STS Exchange Service
 
-**Purpose**: Main Security Token Service that handles OIDC-to-GitHub token exchanges.
+**Purpose**: Main Security Token Service that handles OIDC-to-GitHub token
+exchanges.
 
 **Location**: `cmd/app/main.go`
 
@@ -31,22 +33,23 @@ including binaries, packages, and their responsibilities.
 
 **Configuration**:
 
-| Env Variable                     | Description                       |
-|----------------------------------|-----------------------------------|
-| `PORT`                           | Server listening port             |
-| `GITHUB_APP_ID`                  | GitHub App identifier             |
-| `KMS_KEY`                        | GCP KMS key path (optional)       |
-| `APP_SECRET_CERTIFICATE_FILE`    | PEM key file path (optional)      |
-| `APP_SECRET_CERTIFICATE_ENV_VAR` | PEM key as env var (optional)     |
-| `STS_DOMAIN`                     | Service domain for validation     |
-| `EVENT_INGRESS_URI`              | CloudEvents endpoint              |
-| `METRICS`                        | Enable metrics/tracing            |
+| Env Variable                     | Description                   |
+|----------------------------------|-------------------------------|
+| `PORT`                           | Server listening port         |
+| `GITHUB_APP_ID`                  | GitHub App identifier         |
+| `KMS_KEY`                        | GCP KMS key path (optional)   |
+| `APP_SECRET_CERTIFICATE_FILE`    | PEM key file path (optional)  |
+| `APP_SECRET_CERTIFICATE_ENV_VAR` | PEM key as env var (optional) |
+| `STS_DOMAIN`                     | Service domain for validation |
+| `EVENT_INGRESS_URI`              | CloudEvents endpoint          |
+| `METRICS`                        | Enable metrics/tracing        |
 
 ---
 
 ### cmd/webhook - Trust Policy Validator
 
-**Purpose**: GitHub webhook handler that validates trust policy changes in pull requests and pushes.
+**Purpose**: GitHub webhook handler that validates trust policy changes in pull
+requests and pushes.
 
 **Location**: `cmd/webhook/main.go`
 
@@ -63,20 +66,21 @@ including binaries, packages, and their responsibilities.
 
 **Configuration**:
 
-| Env Variable                         | Description                   |
-|--------------------------------------|-------------------------------|
-| `PORT`                               | Server listening port         |
-| `GITHUB_APP_ID`                      | GitHub App identifier         |
-| `KMS_KEY`                            | GCP KMS key path (optional)   |
-| `GITHUB_WEBHOOK_SECRET`              | Webhook signature secret(s)   |
-| `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | Comma-separated org filter    |
-| `METRICS`                            | Enable metrics/tracing        |
+| Env Variable                         | Description               |
+|--------------------------------------|---------------------------|
+| `PORT`                               | Server listening port     |
+| `GITHUB_APP_ID`                      | GitHub App identifier     |
+| `KMS_KEY`                            | GCP KMS key (optional)    |
+| `GITHUB_WEBHOOK_SECRET`              | Webhook signature secret  |
+| `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | Comma-separated org list  |
+| `METRICS`                            | Enable metrics/tracing    |
 
 ---
 
 ### cmd/prober - Health Prober
 
-**Purpose**: Positive test prober that validates the STS service is functioning correctly.
+**Purpose**: Positive test prober that validates the STS service is functioning
+correctly.
 
 **Location**: `cmd/prober/main.go`
 
@@ -94,7 +98,8 @@ including binaries, packages, and their responsibilities.
 
 ### cmd/negative-prober - Negative Test Prober
 
-**Purpose**: Negative test prober that validates the STS service properly rejects invalid requests.
+**Purpose**: Negative test prober that validates the STS service properly
+rejects invalid requests.
 
 **Location**: `cmd/negative-prober/main.go`
 
@@ -129,7 +134,8 @@ go generate ./cmd/schemagen/...
 
 ### pkg/octosts - Core STS Logic
 
-**Purpose**: Core Security Token Service implementation including trust policy evaluation and token exchange.
+**Purpose**: Core Security Token Service implementation including trust policy
+evaluation and token exchange.
 
 **Location**: `pkg/octosts/`
 
@@ -165,14 +171,14 @@ Trust policy data structures and validation.
 **Key Types**:
 ```go
 type TrustPolicy struct {
-    Issuer          string                            // Exact issuer match
-    IssuerPattern   string                            // Regex issuer match
-    Subject         string                            // Exact subject match
-    SubjectPattern  string                            // Regex subject match
-    Audience        string                            // Exact audience match
-    AudiencePattern string                            // Regex audience match
-    ClaimPattern    map[string]string                 // Custom claim patterns
-    Permissions     github.InstallationPermissions    // Requested permissions
+    Issuer          string                         // Exact issuer match
+    IssuerPattern   string                         // Regex issuer match
+    Subject         string                         // Exact subject match
+    SubjectPattern  string                         // Regex subject match
+    Audience        string                         // Exact audience match
+    AudiencePattern string                         // Regex audience match
+    ClaimPattern    map[string]string              // Custom claim patterns
+    Permissions     github.InstallationPermissions // Requested permissions
 }
 
 type OrgTrustPolicy struct {
@@ -229,7 +235,11 @@ Token revocation utility.
 
 **Key Functions**:
 ```go
-func New(ctx context.Context, env *envConfig.EnvConfig, kmsClient *kms.KeyManagementClient) (*ghinstallation.AppsTransport, error)
+func New(
+    ctx context.Context,
+    env *envConfig.EnvConfig,
+    kmsClient *kms.KeyManagementClient,
+) (*ghinstallation.AppsTransport, error)
 ```
 
 ---
@@ -258,7 +268,8 @@ type gcpSigner struct {
 
 ### pkg/oidcvalidate - OIDC Validation
 
-**Purpose**: Input validation for OIDC token fields to prevent injection and security issues.
+**Purpose**: Input validation for OIDC token fields to prevent injection and
+security issues.
 
 **Location**: `pkg/oidcvalidate/validate.go`
 
@@ -271,9 +282,12 @@ func IsValidAudience(aud string) bool  // Validate audience format
 
 **Validation Rules**:
 
-- **Issuer**: HTTPS required (HTTP allowed for localhost), no query/fragment, valid hostname, max 255 chars
-- **Subject**: Non-empty, max 255 chars, no control characters, printable chars only
-- **Audience**: Non-empty, max 255 chars, no control characters, no injection chars
+- **Issuer**: HTTPS required (HTTP allowed for localhost), no query/fragment,
+  valid hostname, max 255 chars
+- **Subject**: Non-empty, max 255 chars, no control characters, printable
+  chars only
+- **Audience**: Non-empty, max 255 chars, no control characters, no injection
+  chars
 
 **Security Protections**:
 - Homograph attack prevention (ASCII only in hostnames)
@@ -332,12 +346,12 @@ type Validator struct {
 
 **Supported Events**:
 
-| Event Type         | Handler               | Description               |
-|--------------------|-----------------------|---------------------------|
-| `PullRequestEvent` | `handlePullRequest()` | Validate policies in PR   |
-| `PushEvent`        | `handlePush()`        | Validate policies in push |
-| `CheckSuiteEvent`  | `handleCheckSuite()`  | Validate on check suite   |
-| `CheckRunEvent`    | `handleCheckSuite()`  | Validate on check run     |
+| Event Type         | Handler               | Description             |
+|--------------------|-----------------------|-------------------------|
+| `PullRequestEvent` | `handlePullRequest()` | Validate policies in PR |
+| `PushEvent`        | `handlePush()`        | Validate on push        |
+| `CheckSuiteEvent`  | `handleCheckSuite()`  | Validate on check suite |
+| `CheckRunEvent`    | `handleCheckSuite()`  | Validate on check run   |
 
 **Validation Process**:
 1. Validate webhook signature against secrets
@@ -390,7 +404,8 @@ func WebhookConfig() (*EnvConfigWebhook, error)
 ```
 
 **Validation**:
-- Only one of `KMS_KEY`, `APP_SECRET_CERTIFICATE_FILE`, or `APP_SECRET_CERTIFICATE_ENV_VAR` may be set
+- Only one of `KMS_KEY`, `APP_SECRET_CERTIFICATE_FILE`, or
+  `APP_SECRET_CERTIFICATE_ENV_VAR` may be set
 
 ---
 
@@ -405,7 +420,8 @@ func WebhookConfig() (*EnvConfigWebhook, error)
 func NewRoundTripper(maxSize int64, inner http.RoundTripper) http.RoundTripper
 ```
 
-**Usage**: Wraps HTTP client to prevent memory exhaustion from large OIDC provider responses.
+**Usage**: Wraps HTTP client to prevent memory exhaustion from large OIDC
+provider responses.
 
 ---
 
@@ -433,42 +449,40 @@ func Negative(ctx context.Context) error // Negative prober
 ## Data Flow Summary
 
 ```
-+-----------------------------------------------------------------------------+
-|                           Component Interaction                             |
-+-----------------------------------------------------------------------------+
-
 cmd/app
     |
     +--> pkg/envconfig        (Load configuration)
     +--> pkg/ghtransport      (Create GitHub App transport)
     |         |
-    |         \--> pkg/gcpkms (KMS signing if configured)
+    |         └--> pkg/gcpkms (KMS signing if configured)
     |
-    \--> pkg/octosts          (Main STS logic)
+    └--> pkg/octosts          (Main STS logic)
               |
               +--> pkg/provider      (OIDC provider discovery)
               |         |
-              |         \--> pkg/maxsize (Response limiting)
+              |         └--> pkg/maxsize (Response limiting)
               |
-              \--> pkg/oidcvalidate  (Input validation)
+              └--> pkg/oidcvalidate  (Input validation)
 
 cmd/webhook
     |
     +--> pkg/envconfig        (Load configuration)
     +--> pkg/ghtransport      (Create GitHub App transport)
     |
-    \--> pkg/webhook          (Webhook handling)
+    └--> pkg/webhook          (Webhook handling)
               |
-              \--> pkg/octosts (Trust policy parsing)
+              └--> pkg/octosts (Trust policy parsing)
 ```
 
 ## Trust Policy File Locations
 
-**Repository-Level Policy**: `{org}/{repo}/.github/chainguard/{identity}.sts.yaml`
+**Repository-Level Policy**:
+`{org}/{repo}/.github/chainguard/{identity}.sts.yaml`
 - Uses TrustPolicy schema
 - Permissions scoped to the repository
 
-**Organization-Level Policy**: `{org}/.github/chainguard/{identity}.sts.yaml`
+**Organization-Level Policy**:
+`{org}/.github/chainguard/{identity}.sts.yaml`
 - Uses OrgTrustPolicy schema
 - Can specify repositories list
 - Permissions can span multiple repos
@@ -498,26 +512,26 @@ Two JSON schemas are provided for IDE autocompletion:
 
 ### Core Dependencies
 
-| Package                                      | Version  | Purpose                   |
-|----------------------------------------------|----------|---------------------------|
-| `chainguard.dev/go-grpc-kit`                 | v0.17.15 | gRPC/HTTP duplex server   |
-| `chainguard.dev/sdk`                         | v0.1.44  | STS proto definitions     |
-| `github.com/bradleyfalzon/ghinstallation/v2` | v2.17.0  | GitHub App authentication |
-| `github.com/google/go-github/v75`            | v75.0.0  | GitHub API client         |
-| `github.com/coreos/go-oidc/v3`               | v3.17.0  | OIDC verification         |
-| `github.com/cloudevents/sdk-go/v2`           | v2.16.2  | CloudEvents emission      |
-| `github.com/hashicorp/golang-lru/v2`         | v2.0.7   | LRU caching               |
+| Package                              | Version  | Purpose                 |
+|--------------------------------------|----------|-------------------------|
+| `chainguard.dev/go-grpc-kit`         | v0.17.15 | gRPC/HTTP duplex server |
+| `chainguard.dev/sdk`                 | v0.1.44  | STS proto definitions   |
+| `github.com/bradleyfalzon/ghinstallation/v2` | v2.17.0 | GitHub App auth  |
+| `github.com/google/go-github/v75`    | v75.0.0  | GitHub API client       |
+| `github.com/coreos/go-oidc/v3`       | v3.17.0  | OIDC verification       |
+| `github.com/cloudevents/sdk-go/v2`   | v2.16.2  | CloudEvents emission    |
+| `github.com/hashicorp/golang-lru/v2` | v2.0.7   | LRU caching             |
 
 ### GCP Dependencies (Optional)
 
-| Package                            | Version  | Purpose          |
-|------------------------------------|----------|------------------|
-| `cloud.google.com/go/kms`          | v1.23.2  | KMS signing      |
-| `cloud.google.com/go/secretmanager`| v1.16.0  | Secret retrieval |
+| Package                             | Version | Purpose          |
+|-------------------------------------|---------|------------------|
+| `cloud.google.com/go/kms`           | v1.23.2 | KMS signing      |
+| `cloud.google.com/go/secretmanager` | v1.16.0 | Secret retrieval |
 
 ### Infrastructure Dependencies
 
-| Package                                          | Version | Purpose           |
-|--------------------------------------------------|---------|-------------------|
-| `github.com/chainguard-dev/terraform-infra-common`| v0.9.7  | Terraform modules |
-| `github.com/kelseyhightower/envconfig`           | v1.4.0  | Env var parsing   |
+| Package                                   | Version | Purpose           |
+|-------------------------------------------|---------|-------------------|
+| `github.com/chainguard-dev/terraform-infra-common` | v0.9.7 | Terraform modules |
+| `github.com/kelseyhightower/envconfig`    | v1.4.0  | Env var parsing   |

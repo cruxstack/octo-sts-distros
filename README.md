@@ -13,12 +13,12 @@ eliminating the need for long-lived Personal Access Tokens (PATs).
 This repository provides deployment patterns and artifacts for running
 octo-sts.
 
-## Relationship to `octo-sts/app`
+## Relationship to octo-sts/app
 
-This repository **extends** the upstream [octo-sts/app](https://github.com/octo-sts/app)
-with additional deployment options and quality-of-life improvements. **The
-upstream octo-sts/app works perfectly on its own** - this repository is not
-required.
+This repository **extends** the upstream
+[octo-sts/app](https://github.com/octo-sts/app) with additional deployment
+options and quality-of-life improvements. **The upstream octo-sts/app works
+perfectly on its own** - this repository is not required.
 
 What this repository adds:
 
@@ -51,7 +51,8 @@ Serverless deployment using API Gateway v2 and Lambda functions with Terraform.
 
 **Status:** Available
 
-**Documentation:** [distros/aws-lambda/README.md](distros/aws-lambda/README.md)
+**Documentation:**
+[distros/aws-lambda/README.md](distros/aws-lambda/README.md)
 
 ## Documentation
 
@@ -74,10 +75,11 @@ Serverless deployment using API Gateway v2 and Lambda functions with Terraform.
 ## Quick Links
 
 - [octo-sts/app](https://github.com/octo-sts/app) - Upstream project
-- [Trust Policies & Best Practices](https://github.com/octo-sts/app#setting-up-workload-trust) -
+- [Trust Policies](https://github.com/octo-sts/app#setting-up-workload-trust) -
   Setup guide and security recommendations
-- [Original Blog Post](https://www.chainguard.dev/unchained/the-end-of-github-pats-you-cant-leak-what-you-dont-have) -
-  Background on octo-sts
+- [Original Blog Post][blog-post] - Background on octo-sts
+
+[blog-post]: https://www.chainguard.dev/unchained/the-end-of-github-pats-you-cant-leak-what-you-dont-have
 
 ## Disclaimer
 
