@@ -89,3 +89,22 @@ func NewOctoSTSConfig(store configstore.Store) Config {
 
 	return cfg
 }
+
+// WrapOnCredentialsSaved wraps an existing OnCredentialsSaved callback to also
+// trigger a reload after credentials are saved. This is useful for integrating
+// the installer with the ghappsetup.Runtime's reload mechanism.
+func WrapOnCredentialsSaved(existing CredentialsSavedFunc, reloadFunc func()) CredentialsSavedFunc {
+	return func(ctx context.Context, creds *configstore.AppCredentials) error {
+		// Call existing callback first (if any)
+		if existing != nil {
+			if err := existing(ctx, creds); err != nil {
+				return err
+			}
+		}
+		// Trigger reload after credentials are saved
+		if reloadFunc != nil {
+			reloadFunc()
+		}
+		return nil
+	}
+}

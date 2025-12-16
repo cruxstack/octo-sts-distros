@@ -15,7 +15,7 @@ import (
 
 	"github.com/chainguard-dev/clog"
 
-	"github.com/cruxstack/github-app-setup-go/configwait"
+	"github.com/cruxstack/github-app-setup-go/ghappsetup"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/cruxstack/octo-sts-distros/internal/sts"
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
@@ -97,36 +97,35 @@ func main() {
 		fmt.Sscanf(p, "%d", &port)
 	}
 
-	gate := configwait.NewReadyGate(nil, []string{"/healthz"})
-	mux := http.NewServeMux()
+	// Create STS handler (will be configured after config loads)
 	stsHandler := &stsHandler{}
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if gate.IsReady() {
-			w.WriteHeader(http.StatusOK)
-			if _, err := w.Write([]byte("ok")); err != nil {
-				clog.FromContext(r.Context()).Errorf("failed to write health response: %v", err)
-			}
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if _, err := w.Write([]byte("not ready")); err != nil {
-				clog.FromContext(r.Context()).Errorf("failed to write health response: %v", err)
-			}
-		}
+	// Create runtime with unified lifecycle management
+	runtime, err := ghappsetup.NewRuntime(ghappsetup.Config{
+		LoadFunc: func(ctx context.Context) error {
+			return loadConfig(ctx, stsHandler)
+		},
+		AllowedPaths: []string{"/healthz"},
 	})
+	if err != nil {
+		log.Errorf("failed to create runtime: %v", err)
+		os.Exit(1)
+	}
 
+	// Set up routes
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", runtime.HealthHandler())
 	mux.Handle("/", stsHandler)
-	gate.SetHandler(mux)
 
+	// Start HTTP server with ReadyGate middleware
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		ReadHeaderTimeout: shared.DefaultReadHeaderTimeout,
-		Handler:           gate,
+		Handler:           runtime.Handler(mux),
 	}
 
 	log.Infof("Starting HTTP server on port %d (waiting for configuration...)", port)
 
-	// Start server (returns 503 until ready)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf("server error: %v", err)
@@ -134,68 +133,15 @@ func main() {
 		}
 	}()
 
-	// loadConfig loads configuration and creates the STS instance (supports reload).
-	loadConfig := func(ctx context.Context) error {
-		// Re-run env mapping for hot-reload support
-		shared.SetupEnvMapping()
-
-		baseCfg, err := envConfig.BaseConfig()
-		if err != nil {
-			return fmt.Errorf("base config: %w", err)
-		}
-
-		appConfig, err := envConfig.AppConfig()
-		if err != nil {
-			return fmt.Errorf("app config: %w", err)
-		}
-
-		atr, err := ghtransport.New(ctx, baseCfg, nil)
-		if err != nil {
-			return fmt.Errorf("error creating GitHub App transport: %w", err)
-		}
-
-		stsInstance, err := sts.New(atr, sts.Config{
-			Domain: appConfig.Domain,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create sts: %w", err)
-		}
-
-		stsHandler.SetSTS(stsInstance)
-		gate.SetReady()
-
-		return nil
+	// Block until config loads
+	if err := runtime.Start(ctx); err != nil {
+		log.Errorf("failed to load configuration: %v", err)
+		os.Exit(1)
 	}
+	log.Infof("Configuration loaded, service is ready")
 
-	// Set up reloader BEFORE starting wait loop so installer can trigger reload
-	reloader := configwait.NewReloader(ctx, gate, loadConfig)
-	configwait.SetGlobalReloader(reloader)
-	reloader.Start()
-	log.Infof("Configuration reloader started (send SIGHUP to reload)")
-
-	// Load config in background with retries
-	go func() {
-		waitCfg := configwait.NewConfigFromEnv()
-
-		// Track reload count to detect installer triggers
-		initialReloadCount := configwait.GetReloadCount()
-
-		err := configwait.Wait(ctx, waitCfg, func(ctx context.Context) error {
-			// Check if a reload was triggered (e.g., by installer saving credentials)
-			if configwait.GetReloadCount() > initialReloadCount {
-				log.Infof("[configwait] reload triggered, retrying immediately")
-				initialReloadCount = configwait.GetReloadCount()
-			}
-			return loadConfig(ctx)
-		})
-
-		if err != nil {
-			log.Errorf("failed to load configuration after retries: %v", err)
-			os.Exit(1)
-		}
-
-		log.Infof("Configuration loaded, service is ready")
-	}()
+	// Listen for SIGHUP reloads in background
+	go runtime.ListenForReloads(ctx)
 
 	<-ctx.Done()
 	log.Infof("Shutting down server...")
@@ -207,4 +153,35 @@ func main() {
 		log.Errorf("server shutdown error: %v", err)
 		os.Exit(1)
 	}
+}
+
+// loadConfig loads configuration and creates the STS instance (supports reload).
+func loadConfig(ctx context.Context, stsHandler *stsHandler) error {
+	// Re-run env mapping for hot-reload support
+	shared.SetupEnvMapping()
+
+	baseCfg, err := envConfig.BaseConfig()
+	if err != nil {
+		return fmt.Errorf("base config: %w", err)
+	}
+
+	appConfig, err := envConfig.AppConfig()
+	if err != nil {
+		return fmt.Errorf("app config: %w", err)
+	}
+
+	atr, err := ghtransport.New(ctx, baseCfg, nil)
+	if err != nil {
+		return fmt.Errorf("error creating GitHub App transport: %w", err)
+	}
+
+	stsInstance, err := sts.New(atr, sts.Config{
+		Domain: appConfig.Domain,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create sts: %w", err)
+	}
+
+	stsHandler.SetSTS(stsInstance)
+	return nil
 }

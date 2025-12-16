@@ -6,7 +6,7 @@ require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/coreos/go-oidc/v3 v3.17.0
-	github.com/cruxstack/github-app-setup-go v0.1.0
+	github.com/cruxstack/github-app-setup-go v0.4.0
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-cmp v0.7.0

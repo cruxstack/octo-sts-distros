@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -14,6 +13,7 @@ import (
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 	"github.com/chainguard-dev/clog"
 
+	"github.com/cruxstack/github-app-setup-go/ghappsetup"
 	"github.com/cruxstack/github-app-setup-go/ssmresolver"
 	"github.com/cruxstack/octo-sts-distros/internal/app"
 	"github.com/cruxstack/octo-sts-distros/internal/configstore"
@@ -24,7 +24,10 @@ import (
 )
 
 var (
-	// appInstance handles webhook requests (nil if not configured)
+	// runtime provides unified lifecycle management for the Lambda function
+	runtime *ghappsetup.Runtime
+
+	// appInstance handles webhook requests (initialized via runtime.EnsureLoaded)
 	appInstance *app.App
 
 	// installerAdapter wraps the installer handler for Lambda (nil if installer disabled)
@@ -32,9 +35,6 @@ var (
 
 	// configStore is used to check installer status at request time
 	configStore configstore.Store
-
-	// isConfigured indicates whether GitHub App credentials are available
-	isConfigured bool
 
 	// installerEnabled indicates whether the installer is enabled (from env var)
 	installerEnabled bool
@@ -54,76 +54,42 @@ func init() {
 		store, err := configstore.NewFromEnv()
 		if err != nil {
 			log.Errorf("failed to create config store: %v", err)
-			os.Exit(1)
-		}
-		configStore = store
-
-		installerCfg := installer.NewOctoSTSConfig(store)
-
-		installerHandler, err := installer.New(installerCfg)
-		if err != nil {
-			log.Errorf("failed to create installer handler: %v", err)
-			os.Exit(1)
-		}
-
-		// Use httpadapter for proper HTTP response handling (same as lambda-sts)
-		installerAdapter = httpadapter.NewV2(installerHandler)
-
-		log.Infof("[config] installer enabled: /setup endpoint available")
-	}
-
-	// Try to resolve SSM ARNs - don't fail if parameters don't exist yet
-	// (they may be created by the installer)
-	retryCfg := ssmresolver.NewRetryConfigFromEnv()
-	if err := ssmresolver.ResolveEnvironmentWithRetry(ctx, retryCfg); err != nil {
-		if installerEnabled {
-			// If installer is enabled, missing SSM params is expected before setup
-			log.Warnf("SSM parameter resolution failed (expected if GitHub App not yet created): %v", err)
+			// Continue without installer
 		} else {
-			// If installer is disabled, this is a fatal error
-			log.Errorf("failed to resolve SSM parameters: %v", err)
-			os.Exit(1)
+			configStore = store
+
+			installerCfg := installer.NewOctoSTSConfig(store)
+			// Note: We can't wire runtime.Reload here because runtime isn't created yet,
+			// but for Lambda, reload semantics are different (cold start will pick up new config)
+
+			installerHandler, err := installer.New(installerCfg)
+			if err != nil {
+				log.Errorf("failed to create installer handler: %v", err)
+			} else {
+				installerAdapter = httpadapter.NewV2(installerHandler)
+				log.Infof("[config] installer enabled: /setup endpoint available")
+			}
 		}
 	}
 
-	// Try to initialize the webhook handler
-	if err := initWebhookHandler(ctx); err != nil {
-		if installerEnabled {
-			// If installer is enabled, missing config is expected before setup
-			log.Warnf("webhook handler not initialized (expected if GitHub App not yet created): %v", err)
-		} else {
-			// If installer is disabled, this is a fatal error
-			log.Errorf("failed to initialize webhook handler: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		isConfigured = true
-		log.Infof("[config] webhook handler initialized successfully")
+	// Create runtime for webhook handler lifecycle
+	var err error
+	runtime, err = ghappsetup.NewRuntime(ghappsetup.Config{
+		LoadFunc: func(ctx context.Context) error {
+			// Resolve SSM parameters passed as ARNs
+			if err := ssmresolver.ResolveEnvironmentWithDefaults(ctx); err != nil {
+				return err
+			}
+			return initWebhookHandler(ctx)
+		},
+	})
+	if err != nil {
+		log.Errorf("failed to create runtime: %v", err)
+		// Don't exit - let EnsureLoaded handle the error
 	}
 }
 
-// tryInitWebhookHandler attempts to resolve SSM parameters and initialize the webhook handler.
-// This is used for lazy initialization after the setup wizard saves credentials.
-func tryInitWebhookHandler(ctx context.Context) error {
-	log := clog.FromContext(ctx)
-
-	// First, try to resolve SSM ARNs to actual values
-	if err := ssmresolver.ResolveEnvironmentWithDefaults(ctx); err != nil {
-		return err
-	}
-
-	// Now try to initialize the webhook handler
-	if err := initWebhookHandler(ctx); err != nil {
-		return err
-	}
-
-	isConfigured = true
-	log.Infof("[config] webhook handler initialized via lazy initialization")
-	return nil
-}
-
-// initWebhookHandler attempts to create the webhook handler with current configuration.
-// Returns an error if required configuration is missing.
+// initWebhookHandler creates the webhook handler with current configuration.
 func initWebhookHandler(ctx context.Context) error {
 	log := clog.FromContext(ctx)
 
@@ -197,23 +163,17 @@ func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.AP
 		// 1. Installer is enabled via env var
 		// 2. App is not yet configured (no credentials)
 		// 3. Installer hasn't been disabled via UI (check SSM status)
-		if installerEnabled && !isConfigured && !isInstallerDisabled(ctx) {
+		if installerEnabled && !runtime.IsReady() && !isInstallerDisabled(ctx) {
 			return installerAdapter.ProxyWithContext(ctx, req)
 		}
 		return notFoundResponse(), nil
 
 	// Webhook endpoint
 	case path == "/webhook" || strings.HasPrefix(path, "/webhook/"):
-		// If webhook handler isn't initialized yet, try to initialize it now.
-		// This handles the case where the setup wizard saved credentials after
-		// the Lambda cold started without them.
-		if appInstance == nil && installerEnabled {
-			if err := tryInitWebhookHandler(ctx); err != nil {
-				log.Warnf("lazy webhook handler initialization failed: %v", err)
-			}
-		}
-		if appInstance == nil {
-			return serviceUnavailableResponse("webhook handler not configured"), nil
+		// Lazy-load config with retries (idempotent after first success)
+		if err := runtime.EnsureLoaded(ctx); err != nil {
+			log.Warnf("failed to load configuration: %v", err)
+			return serviceUnavailableResponse("webhook handler not configured - complete GitHub App setup first"), nil
 		}
 		return handleWebhook(ctx, req)
 

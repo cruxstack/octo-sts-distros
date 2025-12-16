@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-lambda-go v1.47.0
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/chainguard-dev/clog v1.8.0
+	github.com/cruxstack/github-app-setup-go v0.4.0
 	github.com/cruxstack/octo-sts-distros/internal v0.0.0-00010101000000-000000000000
 	github.com/octo-sts/app v0.5.4
 )
@@ -46,7 +47,6 @@ require (
 	github.com/chainguard-dev/terraform-infra-common v0.9.7 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.16.2 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
-	github.com/cruxstack/github-app-setup-go v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
