@@ -3,17 +3,16 @@ module github.com/cruxstack/octo-sts-distros/cmd
 go 1.25
 
 require (
-	chainguard.dev/go-grpc-kit v0.17.15
-	chainguard.dev/sdk v0.1.45
 	github.com/aws/aws-lambda-go v1.47.0
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/cruxstack/octo-sts-distros/internal v0.0.0-00010101000000-000000000000
 	github.com/octo-sts/app v0.5.4
-	google.golang.org/grpc v1.77.0
 )
 
 require (
+	chainguard.dev/go-grpc-kit v0.17.15 // indirect
+	chainguard.dev/sdk v0.1.45 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -47,6 +46,7 @@ require (
 	github.com/chainguard-dev/terraform-infra-common v0.9.7 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.16.2 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
+	github.com/cruxstack/github-app-setup-go v0.1.0 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
@@ -86,7 +86,6 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
 	go.opentelemetry.io/otel v1.38.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.38.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.38.0 // indirect
@@ -106,6 +105,7 @@ require (
 	google.golang.org/genproto v0.0.0-20250922171735-9219d122eba9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251111163417-95abcf5c77ba // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251124214823-79d6a2a48846 // indirect
+	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	k8s.io/apimachinery v0.34.3 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect

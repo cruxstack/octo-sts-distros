@@ -1,154 +1,84 @@
 // Copyright 2025 CruxStack
 // SPDX-License-Identifier: MIT
 
+// Package configstore re-exports the configstore package from the ghappsetup library
+// and adds octo-sts specific functionality.
 package configstore
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"os"
+	"net/url"
 	"strings"
 
-	"github.com/cruxstack/octo-sts-distros/internal/shared"
+	"github.com/cruxstack/github-app-setup-go/configstore"
 )
 
+// Re-export types from the library
+type (
+	Store           = configstore.Store
+	AppCredentials  = configstore.AppCredentials
+	InstallerStatus = configstore.InstallerStatus
+	HookConfig      = configstore.HookConfig
+	AWSSSMStore     = configstore.AWSSSMStore
+	SSMStoreOption  = configstore.SSMStoreOption
+	SSMClient       = configstore.SSMClient
+)
+
+// Re-export constants from the library
 const (
-	EnvSTSDomain           = "STS_DOMAIN"
-	EnvGitHubAppID         = "GITHUB_APP_ID"
-	EnvGitHubAppSlug       = "GITHUB_APP_SLUG"
-	EnvGitHubAppHTMLURL    = "GITHUB_APP_HTML_URL"
-	EnvGitHubWebhookSecret = "GITHUB_WEBHOOK_SECRET"
-	EnvGitHubClientID      = "GITHUB_CLIENT_ID"
-	EnvGitHubClientSecret  = "GITHUB_CLIENT_SECRET"
-	EnvAppSecretCert       = "APP_SECRET_CERTIFICATE_ENV_VAR"
+	EnvGitHubAppID               = configstore.EnvGitHubAppID
+	EnvGitHubAppSlug             = configstore.EnvGitHubAppSlug
+	EnvGitHubAppHTMLURL          = configstore.EnvGitHubAppHTMLURL
+	EnvGitHubWebhookSecret       = configstore.EnvGitHubWebhookSecret
+	EnvGitHubClientID            = configstore.EnvGitHubClientID
+	EnvGitHubClientSecret        = configstore.EnvGitHubClientSecret
+	EnvGitHubAppPrivateKey       = configstore.EnvGitHubAppPrivateKey
+	EnvGitHubAppInstallerEnabled = configstore.EnvGitHubAppInstallerEnabled
+	EnvStorageMode               = configstore.EnvStorageMode
+	EnvStorageDir                = configstore.EnvStorageDir
+	EnvAWSSSMParameterPfx        = configstore.EnvAWSSSMParameterPfx
+	EnvAWSSSMKMSKeyID            = configstore.EnvAWSSSMKMSKeyID
+	EnvAWSSSMTags                = configstore.EnvAWSSSMTags
+	StorageModeEnvFile           = configstore.StorageModeEnvFile
+	StorageModeFiles             = configstore.StorageModeFiles
+	StorageModeAWSSSM            = configstore.StorageModeAWSSSM
 )
 
-// Environment variable names for store configuration.
+// Octo-STS specific constant
 const (
-	EnvInstallerEnabled   = "INSTALLER_ENABLED"
-	EnvStorageMode        = "STORAGE_MODE"
-	EnvStorageDir         = "STORAGE_DIR"
-	EnvAWSSSMParameterPfx = "AWS_SSM_PARAMETER_PREFIX"
-	EnvAWSSSMKMSKeyID     = "AWS_SSM_KMS_KEY_ID"
-	EnvAWSSSMTags         = "AWS_SSM_TAGS"
+	EnvSTSDomain = "STS_DOMAIN"
 )
 
-// Storage mode constants.
-const (
-	StorageModeEnvFile = "envfile"
-	StorageModeFiles   = "files"
-	StorageModeAWSSSM  = "aws-ssm"
+// Re-export functions from the library
+var (
+	NewFromEnv           = configstore.NewFromEnv
+	InstallerEnabled     = configstore.InstallerEnabled
+	NewAWSSSMStore       = configstore.NewAWSSSMStore
+	NewLocalFileStore    = configstore.NewLocalFileStore
+	NewLocalEnvFileStore = configstore.NewLocalEnvFileStore
+	WithKMSKey           = configstore.WithKMSKey
+	WithTags             = configstore.WithTags
+	WithSSMClient        = configstore.WithSSMClient
+	GetEnvDefault        = configstore.GetEnvDefault
 )
 
-// HookConfig contains webhook configuration returned from GitHub.
-type HookConfig struct {
-	URL string `json:"url"`
-}
-
-// AppCredentials are returned from GitHub App manifest creation.
-type AppCredentials struct {
-	AppID         int64      `json:"id"`
-	AppSlug       string     `json:"slug"`
-	ClientID      string     `json:"client_id"`
-	ClientSecret  string     `json:"client_secret"`
-	WebhookSecret string     `json:"webhook_secret"`
-	PrivateKey    string     `json:"pem"`
-	HTMLURL       string     `json:"html_url"`
-	HookConfig    HookConfig `json:"hook_config"`
-
-	STSDomain string `json:"-"` // Set by installer, not from GitHub API
-}
-
-// InstallerStatus describes the current GitHub App registration state.
-type InstallerStatus struct {
-	Registered        bool
-	InstallerDisabled bool
-	AppID             int64
-	AppSlug           string
-	HTMLURL           string
-}
-
-// Store saves app credentials to various backends (local disk, AWS SSM, etc).
-type Store interface {
-	Save(ctx context.Context, creds *AppCredentials) error
-	Status(ctx context.Context) (*InstallerStatus, error)
-	DisableInstaller(ctx context.Context) error
-}
-
-// NewFromEnv creates a Store based on environment variable configuration.
-// It reads STORAGE_MODE to determine the backend type:
-//   - "envfile" (default): saves to a .env file at STORAGE_DIR (default: ./.env)
-//   - "files": saves to individual files in STORAGE_DIR directory
-//   - "aws-ssm": saves to AWS SSM Parameter Store with AWS_SSM_PARAMETER_PREFIX
-//
-// Returns an error if configuration is invalid or store creation fails.
-func NewFromEnv() (Store, error) {
-	mode := getEnvDefault(EnvStorageMode, StorageModeEnvFile)
-
-	switch mode {
-	case StorageModeFiles:
-		dir := getEnvDefault(EnvStorageDir, "./.env")
-		return NewLocalFileStore(dir), nil
-
-	case StorageModeEnvFile:
-		path := getEnvDefault(EnvStorageDir, "./.env")
-		return NewLocalEnvFileStore(path), nil
-
-	case StorageModeAWSSSM:
-		prefix := os.Getenv(EnvAWSSSMParameterPfx)
-		if prefix == "" {
-			return nil, fmt.Errorf("%s is required when using %s storage mode", EnvAWSSSMParameterPfx, StorageModeAWSSSM)
-		}
-
-		var opts []SSMStoreOption
-
-		if kmsKeyID := os.Getenv(EnvAWSSSMKMSKeyID); kmsKeyID != "" {
-			opts = append(opts, WithKMSKey(kmsKeyID))
-		}
-
-		if tagsJSON := os.Getenv(EnvAWSSSMTags); tagsJSON != "" {
-			var tags map[string]string
-			if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
-				return nil, fmt.Errorf("failed to parse %s as JSON: %w", EnvAWSSSMTags, err)
-			}
-			opts = append(opts, WithTags(tags))
-		}
-
-		return NewAWSSSMStore(prefix, opts...)
-
-	default:
-		return nil, fmt.Errorf("unknown %s: %s (expected '%s', '%s', or '%s')",
-			EnvStorageMode, mode, StorageModeEnvFile, StorageModeFiles, StorageModeAWSSSM)
+// ExtractSTSDomainFromWebhookURL extracts the STS domain from a webhook URL.
+// This is an octo-sts specific helper function.
+func ExtractSTSDomainFromWebhookURL(webhookURL string) string {
+	if webhookURL == "" {
+		return ""
 	}
-}
-
-// InstallerEnabled returns true if the installer is enabled via environment variable.
-func InstallerEnabled() bool {
-	v := strings.ToLower(os.Getenv(EnvInstallerEnabled))
-	return v == "true" || v == "1" || v == "yes"
-}
-
-func hasAllValues(values map[string]string, keys ...string) bool {
-	if len(values) == 0 {
-		return false
+	if parsedURL, err := url.Parse(webhookURL); err == nil && parsedURL.Host != "" {
+		return parsedURL.Host
 	}
-	for _, key := range keys {
-		if strings.TrimSpace(values[key]) == "" {
-			return false
-		}
-	}
-	return true
+	return ""
 }
 
-func isFalseString(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "false", "0", "no", "off":
+// ShouldUpdateSTSDomain returns true if existing is empty or either host is an ngrok domain.
+func ShouldUpdateSTSDomain(existingHost, newHost string) bool {
+	if existingHost == "" {
 		return true
-	default:
-		return false
 	}
+	isNewNgrok := strings.Contains(newHost, "ngrok-free.app") || strings.Contains(newHost, "ngrok.io")
+	isExistingNgrok := strings.Contains(existingHost, "ngrok-free.app") || strings.Contains(existingHost, "ngrok.io")
+	return isNewNgrok || isExistingNgrok
 }
-
-// getEnvDefault is an alias to the shared implementation.
-var getEnvDefault = shared.GetEnvDefault

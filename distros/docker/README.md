@@ -97,7 +97,7 @@ docker compose down
 docker compose up --build
 ```
 
-Optionally, disable the installer by setting `INSTALLER_ENABLED=false` in
+Optionally, disable the installer by setting `GITHUB_APP_INSTALLER_ENABLED=false` in
 `.env` (recommended for security after setup is complete).
 
 Your Octo-STS instance is now running at your ngrok URL.

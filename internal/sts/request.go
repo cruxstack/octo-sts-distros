@@ -16,25 +16,6 @@ const (
 	HeaderContentType   = "content-type"
 )
 
-// Re-export shared types for package users.
-type (
-	// RequestType identifies the type of incoming request.
-	RequestType = shared.RequestType
-	// Request represents a runtime-agnostic HTTP request.
-	Request = shared.Request
-	// Response represents a runtime-agnostic HTTP response.
-	Response = shared.Response
-)
-
-// Re-export shared constants.
-const (
-	// RequestTypeHTTP represents a standard HTTP request.
-	RequestTypeHTTP = shared.RequestTypeHTTP
-)
-
-// NormalizeHeaders converts header keys to lowercase for consistent access.
-var NormalizeHeaders = shared.NormalizeHeaders
-
 // ExchangeRequest represents a token exchange request.
 type ExchangeRequest struct {
 	// Identity is the name of the trust policy to use (e.g., "my-workflow").
@@ -58,9 +39,9 @@ type ErrorResponseBody struct {
 
 // ErrorResponse creates an error response with the given status code and message.
 // For the STS package, errors are returned as JSON.
-func ErrorResponse(statusCode int, message string) Response {
+func ErrorResponse(statusCode int, message string) shared.Response {
 	body, _ := json.Marshal(ErrorResponseBody{Error: message})
-	return Response{
+	return shared.Response{
 		StatusCode: statusCode,
 		Headers: map[string]string{
 			HeaderContentType: "application/json",
@@ -70,12 +51,12 @@ func ErrorResponse(statusCode int, message string) Response {
 }
 
 // JSONResponse creates a JSON response with the given status code and data.
-func JSONResponse(statusCode int, data any) Response {
+func JSONResponse(statusCode int, data any) shared.Response {
 	body, err := json.Marshal(data)
 	if err != nil {
 		return ErrorResponse(http.StatusInternalServerError, "failed to encode response")
 	}
-	return Response{
+	return shared.Response{
 		StatusCode: statusCode,
 		Headers: map[string]string{
 			HeaderContentType: "application/json",
@@ -85,8 +66,8 @@ func JSONResponse(statusCode int, data any) Response {
 }
 
 // OKResponse creates a 200 OK response with no body.
-func OKResponse() Response {
-	return Response{
+func OKResponse() shared.Response {
+	return shared.Response{
 		StatusCode: http.StatusOK,
 		Headers:    make(map[string]string),
 		Body:       nil,

@@ -23,6 +23,7 @@ import (
 	expirablelru "github.com/hashicorp/golang-lru/v2/expirable"
 	"sigs.k8s.io/yaml"
 
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/octo-sts/app/pkg/octosts"
 	"github.com/octo-sts/app/pkg/oidcvalidate"
 	"github.com/octo-sts/app/pkg/provider"
@@ -41,7 +42,7 @@ type cacheTrustPolicyKey struct {
 }
 
 // HandleRequest routes requests to the appropriate handler.
-func (s *STS) HandleRequest(ctx context.Context, req Request) Response {
+func (s *STS) HandleRequest(ctx context.Context, req shared.Request) shared.Response {
 	reqPath := s.stripBasePath(req.Path)
 
 	log := clog.FromContext(ctx)
@@ -74,7 +75,7 @@ func (s *STS) stripBasePath(reqPath string) string {
 }
 
 // handleRoot returns documentation information for GET requests to root.
-func (s *STS) handleRoot(_ context.Context) Response {
+func (s *STS) handleRoot(_ context.Context) shared.Response {
 	return JSONResponse(http.StatusOK, map[string]string{
 		"msg": "please check documentation for usage: https://github.com/octo-sts/app",
 	})
@@ -82,7 +83,7 @@ func (s *STS) handleRoot(_ context.Context) Response {
 
 // handleExchange processes token exchange requests.
 // Supports both POST with JSON body and GET with query parameters.
-func (s *STS) handleExchange(ctx context.Context, req Request) Response {
+func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Response {
 	log := clog.FromContext(ctx)
 
 	var exchangeReq ExchangeRequest

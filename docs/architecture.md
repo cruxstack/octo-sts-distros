@@ -256,13 +256,13 @@ The GitHub App Transport (`pkg/ghtransport`) supports three mutually exclusive
 methods for storing the GitHub App's private key. Only one method should be
 configured; if multiple are set, the service will fail to start.
 
-#### 1. Environment Variable (`APP_SECRET_CERTIFICATE_ENV_VAR`)
+#### 1. Environment Variable (`GITHUB_APP_PRIVATE_KEY`)
 
 The GitHub App's private key is passed directly as a PEM-encoded string in an
 environment variable.
 
 ```
-APP_SECRET_CERTIFICATE_ENV_VAR="-----BEGIN RSA PRIVATE KEY-----
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 MIIEpAIBAAKCAQEA...
 -----END RSA PRIVATE KEY-----"
 ```
@@ -466,7 +466,7 @@ Each token exchange emits a CloudEvent of type `dev.octo-sts.exchange`:
 | `GITHUB_APP_ID`                      | Yes          | GitHub App ID            |
 | `KMS_KEY`                            | One of three | GCP KMS key reference    |
 | `APP_SECRET_CERTIFICATE_FILE`        | One of three | Path to PEM key file     |
-| `APP_SECRET_CERTIFICATE_ENV_VAR`     | One of three | PEM key as env var       |
+| `GITHUB_APP_PRIVATE_KEY`             | One of three | PEM key as env var       |
 | `STS_DOMAIN`                         | Yes (app)    | Domain for audience      |
 | `GITHUB_WEBHOOK_SECRET`              | Yes (webhook)| Webhook signature secret |
 | `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | No           | Comma-separated orgs     |

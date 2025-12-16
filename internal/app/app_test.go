@@ -24,6 +24,8 @@ import (
 	"github.com/chainguard-dev/clog"
 	"github.com/chainguard-dev/clog/slogtest"
 	"github.com/google/go-github/v75/github"
+
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
 
 func TestNew(t *testing.T) {
@@ -127,7 +129,7 @@ func TestNormalizeHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeHeaders(tt.input)
+			got := shared.NormalizeHeaders(tt.input)
 			if len(got) != len(tt.expected) {
 				t.Errorf("NormalizeHeaders() returned %d headers, expected %d", len(got), len(tt.expected))
 			}
@@ -218,13 +220,13 @@ func TestHandleRequestRouting(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        Request
+		request        shared.Request
 		expectedStatus int
 	}{
 		{
 			name: "GET request returns 404",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodGet,
 				Path:    "/",
 				Headers: map[string]string{},
@@ -233,8 +235,8 @@ func TestHandleRequestRouting(t *testing.T) {
 		},
 		{
 			name: "POST to /other returns 404",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodPost,
 				Path:    "/other",
 				Headers: map[string]string{},
@@ -243,8 +245,8 @@ func TestHandleRequestRouting(t *testing.T) {
 		},
 		{
 			name: "POST to / without signature returns 400",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodPost,
 				Path:    "/",
 				Headers: map[string]string{},
@@ -347,11 +349,11 @@ func TestOrgFilter(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			req := Request{
-				Type:   RequestTypeHTTP,
+			req := shared.Request{
+				Type:   shared.RequestTypeHTTP,
 				Method: http.MethodPost,
 				Path:   "/",
-				Headers: NormalizeHeaders(map[string]string{
+				Headers: shared.NormalizeHeaders(map[string]string{
 					"X-Hub-Signature": signature(secret, body),
 					"X-GitHub-Event":  "push",
 					"Content-Type":    "application/json",
@@ -441,11 +443,11 @@ func TestWebhookOK(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := Request{
-		Type:   RequestTypeHTTP,
+	req := shared.Request{
+		Type:   shared.RequestTypeHTTP,
 		Method: http.MethodPost,
 		Path:   "/",
-		Headers: NormalizeHeaders(map[string]string{
+		Headers: shared.NormalizeHeaders(map[string]string{
 			"X-Hub-Signature": signature(secret, body),
 			"X-GitHub-Event":  "push",
 			"Content-Type":    "application/json",
@@ -512,11 +514,11 @@ func TestWebhookWithBasePath(t *testing.T) {
 	}
 
 	// Request with base path prefix should work
-	req := Request{
-		Type:   RequestTypeHTTP,
+	req := shared.Request{
+		Type:   shared.RequestTypeHTTP,
 		Method: http.MethodPost,
 		Path:   "/webhook",
-		Headers: NormalizeHeaders(map[string]string{
+		Headers: shared.NormalizeHeaders(map[string]string{
 			"X-Hub-Signature": signature(secret, body),
 			"X-GitHub-Event":  "push",
 			"Content-Type":    "application/json",
@@ -569,11 +571,11 @@ func TestMultipleWebhookSecrets(t *testing.T) {
 	}
 
 	// Test with first secret
-	req1 := Request{
-		Type:   RequestTypeHTTP,
+	req1 := shared.Request{
+		Type:   shared.RequestTypeHTTP,
 		Method: http.MethodPost,
 		Path:   "/",
-		Headers: NormalizeHeaders(map[string]string{
+		Headers: shared.NormalizeHeaders(map[string]string{
 			"X-Hub-Signature": signature(secret1, body),
 			"X-GitHub-Event":  "push",
 			"Content-Type":    "application/json",
@@ -589,11 +591,11 @@ func TestMultipleWebhookSecrets(t *testing.T) {
 	}
 
 	// Test with second secret
-	req2 := Request{
-		Type:   RequestTypeHTTP,
+	req2 := shared.Request{
+		Type:   shared.RequestTypeHTTP,
 		Method: http.MethodPost,
 		Path:   "/",
-		Headers: NormalizeHeaders(map[string]string{
+		Headers: shared.NormalizeHeaders(map[string]string{
 			"X-Hub-Signature": signature(secret2, body),
 			"X-GitHub-Event":  "push",
 			"Content-Type":    "application/json",
@@ -607,11 +609,11 @@ func TestMultipleWebhookSecrets(t *testing.T) {
 	}
 
 	// Test with invalid secret
-	req3 := Request{
-		Type:   RequestTypeHTTP,
+	req3 := shared.Request{
+		Type:   shared.RequestTypeHTTP,
 		Method: http.MethodPost,
 		Path:   "/",
-		Headers: NormalizeHeaders(map[string]string{
+		Headers: shared.NormalizeHeaders(map[string]string{
 			"X-Hub-Signature": signature([]byte("wrong-secret"), body),
 			"X-GitHub-Event":  "push",
 			"Content-Type":    "application/json",

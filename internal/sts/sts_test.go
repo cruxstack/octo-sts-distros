@@ -35,6 +35,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-github/v75/github"
 
+	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/octo-sts/app/pkg/provider"
 )
 
@@ -128,7 +129,7 @@ func TestNormalizeHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeHeaders(tt.input)
+			got := shared.NormalizeHeaders(tt.input)
 			if len(got) != len(tt.expected) {
 				t.Errorf("NormalizeHeaders() returned %d headers, expected %d", len(got), len(tt.expected))
 			}
@@ -219,13 +220,13 @@ func TestHandleRequestRouting(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		request        Request
+		request        shared.Request
 		expectedStatus int
 	}{
 		{
 			name: "GET request to root returns 200",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodGet,
 				Path:    "/",
 				Headers: map[string]string{},
@@ -234,8 +235,8 @@ func TestHandleRequestRouting(t *testing.T) {
 		},
 		{
 			name: "POST to /other returns 404",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodPost,
 				Path:    "/other",
 				Headers: map[string]string{},
@@ -244,8 +245,8 @@ func TestHandleRequestRouting(t *testing.T) {
 		},
 		{
 			name: "POST to / without auth returns 401",
-			request: Request{
-				Type:    RequestTypeHTTP,
+			request: shared.Request{
+				Type:    shared.RequestTypeHTTP,
 				Method:  http.MethodPost,
 				Path:    "/",
 				Headers: map[string]string{},
@@ -255,8 +256,8 @@ func TestHandleRequestRouting(t *testing.T) {
 		},
 		{
 			name: "POST to / with invalid body returns 400",
-			request: Request{
-				Type:   RequestTypeHTTP,
+			request: shared.Request{
+				Type:   shared.RequestTypeHTTP,
 				Method: http.MethodPost,
 				Path:   "/",
 				Headers: map[string]string{
@@ -481,11 +482,11 @@ func TestExchange(t *testing.T) {
 				t.Fatalf("json.Marshal failed: %v", err)
 			}
 
-			resp := sts.HandleRequest(ctx, Request{
-				Type:   RequestTypeHTTP,
+			resp := sts.HandleRequest(ctx, shared.Request{
+				Type:   shared.RequestTypeHTTP,
 				Method: http.MethodPost,
 				Path:   "/",
-				Headers: NormalizeHeaders(map[string]string{
+				Headers: shared.NormalizeHeaders(map[string]string{
 					"Authorization": "Bearer " + token,
 					"Content-Type":  "application/json",
 				}),
@@ -591,11 +592,11 @@ func TestExchangeValidation(t *testing.T) {
 				t.Fatalf("json.Marshal failed: %v", err)
 			}
 
-			resp := sts.HandleRequest(ctx, Request{
-				Type:   RequestTypeHTTP,
+			resp := sts.HandleRequest(ctx, shared.Request{
+				Type:   shared.RequestTypeHTTP,
 				Method: http.MethodPost,
 				Path:   "/",
-				Headers: NormalizeHeaders(map[string]string{
+				Headers: shared.NormalizeHeaders(map[string]string{
 					"Authorization": "Bearer " + token,
 					"Content-Type":  "application/json",
 				}),
