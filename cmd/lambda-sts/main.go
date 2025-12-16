@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"net/http"
-	"os"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -15,21 +14,18 @@ import (
 	envConfig "github.com/octo-sts/app/pkg/envconfig"
 	"github.com/octo-sts/app/pkg/ghtransport"
 
+	"github.com/cruxstack/github-app-setup-go/ghappsetup"
 	"github.com/cruxstack/github-app-setup-go/ssmresolver"
-	"github.com/cruxstack/octo-sts-distros/internal/configstore"
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/cruxstack/octo-sts-distros/internal/sts"
 )
 
 var (
-	// stsInstance handles STS requests (nil if not configured)
+	// runtime provides unified lifecycle management for the Lambda function
+	runtime *ghappsetup.Runtime
+
+	// stsInstance handles STS requests (initialized via runtime.EnsureLoaded)
 	stsInstance *sts.STS
-
-	// isConfigured indicates whether GitHub App credentials are available
-	isConfigured bool
-
-	// installerEnabled indicates whether the installer is enabled (from env var)
-	installerEnabled bool
 )
 
 func init() {
@@ -39,40 +35,23 @@ func init() {
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
-	installerEnabled = configstore.InstallerEnabled()
-
-	// Try to resolve SSM ARNs - don't fail if parameters don't exist yet
-	// (they may be created by the installer)
-	retryCfg := ssmresolver.NewRetryConfigFromEnv()
-	if err := ssmresolver.ResolveEnvironmentWithRetry(ctx, retryCfg); err != nil {
-		if installerEnabled {
-			// If installer is enabled, missing SSM params is expected before setup
-			log.Warnf("SSM parameter resolution failed (expected if GitHub App not yet created): %v", err)
-		} else {
-			// If installer is disabled, this is a fatal error
-			log.Errorf("failed to resolve SSM parameters: %v", err)
-			os.Exit(1)
-		}
-	}
-
-	// Try to initialize the STS handler
-	if err := initSTSHandler(ctx); err != nil {
-		if installerEnabled {
-			// If installer is enabled, missing config is expected before setup
-			log.Warnf("STS handler not initialized (expected if GitHub App not yet created): %v", err)
-		} else {
-			// If installer is disabled, this is a fatal error
-			log.Errorf("failed to initialize STS handler: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		isConfigured = true
-		log.Infof("[config] STS handler initialized successfully")
+	var err error
+	runtime, err = ghappsetup.NewRuntime(ghappsetup.Config{
+		LoadFunc: func(ctx context.Context) error {
+			// Resolve SSM parameters passed as ARNs
+			if err := ssmresolver.ResolveEnvironmentWithDefaults(ctx); err != nil {
+				return err
+			}
+			return initSTSHandler(ctx)
+		},
+	})
+	if err != nil {
+		log.Errorf("failed to create runtime: %v", err)
+		// Don't exit - let EnsureLoaded handle the error
 	}
 }
 
-// initSTSHandler attempts to create the STS handler with current configuration.
-// Returns an error if required configuration is missing.
+// initSTSHandler creates the STS handler with current configuration.
 func initSTSHandler(ctx context.Context) error {
 	log := clog.FromContext(ctx)
 
@@ -105,36 +84,13 @@ func initSTSHandler(ctx context.Context) error {
 	return nil
 }
 
-// tryInitSTSHandler re-resolves SSM parameters and initializes the STS handler.
-func tryInitSTSHandler(ctx context.Context) error {
-	log := clog.FromContext(ctx)
-
-	if err := ssmresolver.ResolveEnvironmentWithDefaults(ctx); err != nil {
-		return err
-	}
-
-	if err := initSTSHandler(ctx); err != nil {
-		return err
-	}
-
-	isConfigured = true
-	log.Infof("[config] STS handler initialized via lazy initialization")
-	return nil
-}
-
 func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	ctx = clog.WithLogger(ctx, clog.New(shared.NewSlogHandler()))
 	log := clog.FromContext(ctx)
 
-	// Lazy init if credentials were saved after cold start
-	if stsInstance == nil && installerEnabled {
-		if err := tryInitSTSHandler(ctx); err != nil {
-			log.Warnf("lazy STS handler initialization failed: %v", err)
-		}
-	}
-
-	// If STS handler is still not configured, return service unavailable
-	if stsInstance == nil {
+	// Lazy-load config with retries (idempotent after first success)
+	if err := runtime.EnsureLoaded(ctx); err != nil {
+		log.Warnf("failed to load configuration: %v", err)
 		return events.APIGatewayV2HTTPResponse{
 			StatusCode: http.StatusServiceUnavailable,
 			Headers: map[string]string{
