@@ -1,26 +1,10 @@
 # octo-sts-distros
 
-Distribution packages and deployment artifacts for
-[octo-sts/app](https://github.com/octo-sts/app) - a Security Token Service
-(STS) for GitHub that enables OIDC-to-GitHub token federation.
+Deployment distributions for [octo-sts/app](https://github.com/octo-sts/app) - a
+Security Token Service that lets workloads exchange OIDC tokens for short-lived
+GitHub access tokens, eliminating long-lived PATs.
 
-## Overview
-
-Octo-STS allows workloads running anywhere (CI/CD systems, cloud environments,
-Kubernetes, etc.) to exchange OIDC tokens for short-lived GitHub access tokens,
-eliminating the need for long-lived Personal Access Tokens (PATs).
-
-This repository provides deployment patterns and artifacts for running
-octo-sts.
-
-## Relationship to octo-sts/app
-
-This repository **extends** the upstream
-[octo-sts/app](https://github.com/octo-sts/app) with additional deployment
-options and quality-of-life improvements. **The upstream octo-sts/app works
-perfectly on its own** - this repository is not required.
-
-What this repository adds:
+**The upstream octo-sts/app works on its own** - this repository adds:
 
 - **Web-based GitHub App installer** - Create your GitHub App via a guided web
   flow that auto-configures permissions and saves credentials to your chosen
@@ -31,10 +15,6 @@ What this repository adds:
   AWS
 - **Docker distribution** - Docker Compose setup for local development with
   ngrok
-
-If you're deploying to **GCP Cloud Run**, use the upstream
-[octo-sts/app](https://github.com/octo-sts/app) directly - it has native Cloud
-Run support.
 
 ## Distributions
 
@@ -49,10 +29,13 @@ Includes automated GitHub App installer and ngrok integration.
 
 Serverless deployment using API Gateway v2 and Lambda functions with Terraform.
 
-**Status:** Available
-
 **Documentation:**
 [distros/aws-lambda/README.md](distros/aws-lambda/README.md)
+
+### GCP Cloud Run
+
+Use [octo-sts/app](https://github.com/octo-sts/app) directly - it has native
+Cloud Run support.
 
 ## Documentation
 
