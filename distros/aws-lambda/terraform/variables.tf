@@ -28,6 +28,7 @@ variable "lambda_config" {
     runtime                        = optional(string, "provided.al2023")
     architecture                   = optional(string, "arm64")
     reserved_concurrent_executions = optional(number, -1)
+    log_level                      = optional(string, "info")
   })
   default = {}
 
@@ -44,6 +45,11 @@ variable "lambda_config" {
   validation {
     condition     = contains(["arm64", "x86_64"], var.lambda_config.architecture)
     error_message = "Lambda architecture must be 'arm64' or 'x86_64'."
+  }
+
+  validation {
+    condition     = contains(["debug", "info", "warn", "error"], var.lambda_config.log_level)
+    error_message = "Lambda log_level must be one of: debug, info, warn, error."
   }
 }
 

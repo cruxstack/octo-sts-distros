@@ -161,30 +161,44 @@ func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Res
 		Repositories: trustPolicy.Repositories,
 		Permissions:  &trustPolicy.Permissions,
 	}
+
+	// Log the token request details at debug level
+	if shared.IsDebugEnabled() {
+		log.Debugf("GitHub token exchange request: installation_id=%d, repositories=%v, permissions=%s",
+			installID,
+			trustPolicy.Repositories,
+			formatPermissions(&trustPolicy.Permissions))
+	}
+
 	token, err := atr.Token(ctx)
 	if err != nil {
 		var herr *ghinstallation.HTTPError
 		if errors.As(err, &herr) && herr.Response != nil {
+			// Log response details at debug level
+			if shared.IsDebugEnabled() {
+				log.Debugf("GitHub API error response: status=%d, status_text=%s",
+					herr.Response.StatusCode,
+					herr.Response.Status)
+			}
+
 			if herr.Response.StatusCode == http.StatusUnprocessableEntity {
 				if body, err := io.ReadAll(herr.Response.Body); err == nil {
-					log.Debugf("token exchange failure (StatusUnprocessableEntity): %s", body)
+					log.Warnf("token exchange failure (status=%d): %s", herr.Response.StatusCode, body)
 					return ErrorResponse(http.StatusForbidden, "token exchange failure")
 				}
 			} else if herr.Response.Body != nil {
 				body, err := httputil.DumpResponse(herr.Response, true)
 				if err == nil {
-					log.Warn("token exchange failure, redacting body in logs")
-					log.Debugf("token exchange failure: %s", body)
+					log.Warnf("token exchange failure (status=%d): %s", herr.Response.StatusCode, redactTokenInBody(string(body)))
 				}
 			}
 		} else {
-			log.Debugf("token exchange failure: %v", err)
-			log.Warn("token exchange failure, redacting error in logs")
+			log.Warnf("token exchange failure: %v", redactTokenInError(err))
 		}
-		log.Debugf("failed to get token: %v", err)
 		return ErrorResponse(http.StatusInternalServerError, "failed to get token")
 	}
 
+	log.Infof("token exchange successful: installation_id=%d, repositories_count=%d", installID, len(trustPolicy.Repositories))
 	return JSONResponse(http.StatusOK, ExchangeResponse{Token: token})
 }
 
@@ -355,4 +369,78 @@ func extractIssuer(token string) (string, error) {
 
 func ptr[T any](in T) *T {
 	return &in
+}
+
+// formatPermissions returns a string representation of the permissions being requested.
+func formatPermissions(perms *github.InstallationPermissions) string {
+	if perms == nil {
+		return "{}"
+	}
+
+	parts := []string{}
+	if perms.Contents != nil {
+		parts = append(parts, fmt.Sprintf("contents:%s", *perms.Contents))
+	}
+	if perms.Actions != nil {
+		parts = append(parts, fmt.Sprintf("actions:%s", *perms.Actions))
+	}
+	if perms.Issues != nil {
+		parts = append(parts, fmt.Sprintf("issues:%s", *perms.Issues))
+	}
+	if perms.PullRequests != nil {
+		parts = append(parts, fmt.Sprintf("pull_requests:%s", *perms.PullRequests))
+	}
+	if perms.Packages != nil {
+		parts = append(parts, fmt.Sprintf("packages:%s", *perms.Packages))
+	}
+	if perms.Metadata != nil {
+		parts = append(parts, fmt.Sprintf("metadata:%s", *perms.Metadata))
+	}
+	if perms.Statuses != nil {
+		parts = append(parts, fmt.Sprintf("statuses:%s", *perms.Statuses))
+	}
+	if perms.Checks != nil {
+		parts = append(parts, fmt.Sprintf("checks:%s", *perms.Checks))
+	}
+	if perms.Deployments != nil {
+		parts = append(parts, fmt.Sprintf("deployments:%s", *perms.Deployments))
+	}
+	if perms.Administration != nil {
+		parts = append(parts, fmt.Sprintf("administration:%s", *perms.Administration))
+	}
+
+	if len(parts) == 0 {
+		return "{}"
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// redactTokenInBody redacts any token values in the response body for safe logging.
+func redactTokenInBody(body string) string {
+	// Redact common token patterns in JSON responses
+	if strings.Contains(body, "token") {
+		for _, prefix := range []string{"ghs_", "ghp_", "gho_", "ghu_", "github_pat_"} {
+			for {
+				idx := strings.Index(body, prefix)
+				if idx == -1 {
+					break
+				}
+				// Find the end of the token (typically ends at quote, space, or end of string)
+				endIdx := idx + len(prefix)
+				for endIdx < len(body) && body[endIdx] != '"' && body[endIdx] != ' ' && body[endIdx] != '\n' {
+					endIdx++
+				}
+				body = body[:idx] + "[REDACTED]" + body[endIdx:]
+			}
+		}
+	}
+	return body
+}
+
+// redactTokenInError redacts any token values in error messages for safe logging.
+func redactTokenInError(err error) string {
+	if err == nil {
+		return ""
+	}
+	return redactTokenInBody(err.Error())
 }

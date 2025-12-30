@@ -20,52 +20,38 @@ locals {
   aws_region_name = data.aws_region.current.id
   aws_partition   = data.aws_partition.current.partition
 
-  # Use provided webhook secret or generate one (only when installer is disabled)
-  # When installer is enabled, use SSM ARN so the Lambda can resolve the secret at runtime
   github_webhook_secret = var.installer_config.enabled ? (
     "${local.ssm_arn_prefix}GITHUB_WEBHOOK_SECRET"
     ) : (
     var.github_app_config.webhook_secret != "" ? var.github_app_config.webhook_secret : random_password.webhook_secret[0].result
   )
 
-  # STS domain: use custom domain if provided, otherwise extract hostname from API Gateway endpoint
   sts_domain = var.sts_config.domain != "" ? var.sts_config.domain : (
     local.enabled && var.api_gateway_config.enabled ?
     replace(aws_apigatewayv2_api.this[0].api_endpoint, "https://", "") : ""
   )
 
-  # SSM ARNs for installer mode - used to resolve credentials at runtime
   ssm_arn_prefix = "arn:${local.aws_partition}:ssm:${local.aws_region_name}:${local.aws_account_id}:parameter${var.installer_config.ssm_parameter_prefix}"
 
-  # Common environment variables for both Lambdas
-  # When installer is enabled, use SSM ARNs so the Lambda can resolve credentials at runtime
   lambda_env_common = {
-    PORT    = "8080"
-    METRICS = "false"
-    GITHUB_APP_ID = var.installer_config.enabled ? (
-      "${local.ssm_arn_prefix}GITHUB_APP_ID"
-    ) : var.github_app_config.app_id
-    GITHUB_APP_PRIVATE_KEY = var.installer_config.enabled ? (
-      "${local.ssm_arn_prefix}GITHUB_APP_PRIVATE_KEY"
-    ) : var.github_app_config.private_key
+    LOG_LEVEL              = var.lambda_config.log_level
+    GITHUB_APP_ID          = var.installer_config.enabled ? "${local.ssm_arn_prefix}GITHUB_APP_ID" : var.github_app_config.app_id
+    GITHUB_APP_PRIVATE_KEY = var.installer_config.enabled ? "${local.ssm_arn_prefix}GITHUB_APP_PRIVATE_KEY" : var.github_app_config.private_key
   }
 
   lambda_env_sts = merge(local.lambda_env_common, {
-    STS_DOMAIN                   = local.sts_domain
-    GITHUB_APP_INSTALLER_ENABLED = tostring(var.installer_config.enabled)
+    STS_DOMAIN = local.sts_domain
   }, var.lambda_environment_variables)
 
-  # Webhook Lambda environment includes installer configuration
   lambda_env_webhook = merge(local.lambda_env_common, {
-    GITHUB_WEBHOOK_SECRET              = local.github_webhook_secret
+    AWS_SSM_KMS_KEY_ID                 = var.installer_config.kms_key_id
+    AWS_SSM_PARAMETER_PREFIX           = var.installer_config.ssm_parameter_prefix
+    GITHUB_APP_INSTALLER_ENABLED       = tostring(var.installer_config.enabled)
+    GITHUB_ORG                         = var.installer_config.github_org
+    GITHUB_URL                         = var.installer_config.github_url
     GITHUB_WEBHOOK_ORGANIZATION_FILTER = var.webhook_config.organization_filter
-    # Installer configuration
-    GITHUB_APP_INSTALLER_ENABLED = tostring(var.installer_config.enabled)
-    STORAGE_MODE                 = var.installer_config.enabled ? "aws-ssm" : ""
-    AWS_SSM_PARAMETER_PREFIX     = var.installer_config.ssm_parameter_prefix
-    AWS_SSM_KMS_KEY_ID           = var.installer_config.kms_key_id
-    GITHUB_URL                   = var.installer_config.github_url
-    GITHUB_ORG                   = var.installer_config.github_org
+    GITHUB_WEBHOOK_SECRET              = local.github_webhook_secret
+    STORAGE_MODE                       = var.installer_config.enabled ? "aws-ssm" : ""
   }, var.lambda_environment_variables)
 }
 
@@ -73,10 +59,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
-# ======================================================== webhook secret ===
-
 resource "random_password" "webhook_secret" {
-  # Only generate webhook secret when installer is disabled and no secret provided
   count = local.enabled && !var.installer_config.enabled && var.github_app_config.webhook_secret == "" ? 1 : 0
 
   length  = 32
@@ -254,8 +237,6 @@ resource "aws_apigatewayv2_stage" "this" {
   tags = module.this.tags
 }
 
-# --------------------------------------------------------- sts integration ---
-
 resource "aws_apigatewayv2_integration" "sts" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -265,7 +246,6 @@ resource "aws_apigatewayv2_integration" "sts" {
   payload_format_version = "2.0"
 }
 
-# Route: ANY /sts/{proxy+} - STS service routes
 resource "aws_apigatewayv2_route" "sts_proxy" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -274,7 +254,6 @@ resource "aws_apigatewayv2_route" "sts_proxy" {
   target    = "integrations/${aws_apigatewayv2_integration.sts[0].id}"
 }
 
-# Route: ANY /{proxy+} - Catch-all for STS (fallback)
 resource "aws_apigatewayv2_route" "catch_all" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -282,8 +261,6 @@ resource "aws_apigatewayv2_route" "catch_all" {
   route_key = "ANY /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.sts[0].id}"
 }
-
-# ----------------------------------------------------- webhook integration ---
 
 resource "aws_apigatewayv2_integration" "webhook" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
@@ -294,7 +271,6 @@ resource "aws_apigatewayv2_integration" "webhook" {
   payload_format_version = "2.0"
 }
 
-# Route: ANY /webhook - GitHub webhook endpoint
 resource "aws_apigatewayv2_route" "webhook" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -303,7 +279,6 @@ resource "aws_apigatewayv2_route" "webhook" {
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
 
-# Route: GET / - Root handler (installer redirect or 404)
 resource "aws_apigatewayv2_route" "root" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -312,7 +287,6 @@ resource "aws_apigatewayv2_route" "root" {
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
 
-# Route: GET /healthz - Health check endpoint
 resource "aws_apigatewayv2_route" "healthz" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
 
@@ -321,9 +295,6 @@ resource "aws_apigatewayv2_route" "healthz" {
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
 
-# --------------------------------------------------------- installer routes ---
-
-# Route: GET /setup - Installer main page
 resource "aws_apigatewayv2_route" "setup" {
   count = local.enabled && var.api_gateway_config.enabled && var.installer_config.enabled ? 1 : 0
 
@@ -332,7 +303,6 @@ resource "aws_apigatewayv2_route" "setup" {
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
 
-# Route: ANY /setup/{proxy+} - Installer sub-routes (e.g., /setup/disable)
 resource "aws_apigatewayv2_route" "setup_proxy" {
   count = local.enabled && var.api_gateway_config.enabled && var.installer_config.enabled ? 1 : 0
 
@@ -341,7 +311,6 @@ resource "aws_apigatewayv2_route" "setup_proxy" {
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
 
-# Route: GET /callback - GitHub OAuth callback after app creation
 resource "aws_apigatewayv2_route" "callback" {
   count = local.enabled && var.api_gateway_config.enabled && var.installer_config.enabled ? 1 : 0
 
@@ -349,8 +318,6 @@ resource "aws_apigatewayv2_route" "callback" {
   route_key = "GET /callback"
   target    = "integrations/${aws_apigatewayv2_integration.webhook[0].id}"
 }
-
-# ---------------------------------------------------- lambda permissions ---
 
 resource "aws_lambda_permission" "sts" {
   count = local.enabled && var.api_gateway_config.enabled ? 1 : 0
@@ -372,7 +339,7 @@ resource "aws_lambda_permission" "webhook" {
   source_arn    = "${aws_apigatewayv2_api.this[0].execution_arn}/*/*"
 }
 
-# ---------------------------------------------------------------------- iam ---
+# ====================================================================== iam ===
 
 resource "aws_iam_role" "lambda" {
   count = local.enabled ? 1 : 0
@@ -422,7 +389,6 @@ data "aws_iam_policy_document" "lambda" {
     }
   }
 
-  # Installer requires SSM read access to check installation status and read credentials
   dynamic "statement" {
     for_each = var.installer_config.enabled && var.installer_config.ssm_parameter_prefix != "" ? [1] : []
 
@@ -439,7 +405,6 @@ data "aws_iam_policy_document" "lambda" {
     }
   }
 
-  # Installer requires SSM write access to save GitHub App credentials
   dynamic "statement" {
     for_each = var.installer_config.enabled && var.installer_config.ssm_parameter_prefix != "" ? [1] : []
 
