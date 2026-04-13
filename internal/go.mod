@@ -12,7 +12,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v75 v75.0.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/octo-sts/app v0.5.4
+	github.com/octo-sts/app v0.6.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
