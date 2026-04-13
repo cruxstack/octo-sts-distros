@@ -8,7 +8,7 @@ require (
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/cruxstack/github-app-setup-go v0.7.0
 	github.com/cruxstack/octo-sts-distros/internal v0.0.0-00010101000000-000000000000
-	github.com/octo-sts/app v0.5.4
+	github.com/octo-sts/app v0.6.0
 )
 
 require (
