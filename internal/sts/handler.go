@@ -18,7 +18,7 @@ import (
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/chainguard-dev/clog"
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/google/go-github/v75/github"
+	"github.com/google/go-github/v84/github"
 	lru "github.com/hashicorp/golang-lru/v2"
 	expirablelru "github.com/hashicorp/golang-lru/v2/expirable"
 	"sigs.k8s.io/yaml"
