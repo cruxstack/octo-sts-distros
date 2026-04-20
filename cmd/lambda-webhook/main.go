@@ -105,7 +105,12 @@ func initWebhookHandler(ctx context.Context) error {
 
 	baseCfg.Metrics = false // GCP-specific
 
-	atr, err := ghtransport.New(ctx, baseCfg, nil)
+	appID, kmsKey, err := shared.PrimaryGitHubApp(baseCfg)
+	if err != nil {
+		return err
+	}
+
+	atr, err := ghtransport.New(ctx, appID, kmsKey, baseCfg, nil)
 	if err != nil {
 		return err
 	}

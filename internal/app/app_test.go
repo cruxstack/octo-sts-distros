@@ -23,7 +23,7 @@ import (
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/chainguard-dev/clog"
 	"github.com/chainguard-dev/clog/slogtest"
-	"github.com/google/go-github/v75/github"
+	"github.com/google/go-github/v84/github"
 
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 )
