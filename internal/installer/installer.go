@@ -56,6 +56,7 @@ func OctoSTSManifest() Manifest {
 			"pull_requests":       "write",
 			"workflows":           "write",
 			// Organization permissions
+			"organization_api_insights":   "read",
 			"organization_administration": "write",
 			"organization_events":         "read",
 			"members":                     "write",
