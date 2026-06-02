@@ -72,7 +72,7 @@ func initSTSHandler(ctx context.Context) error {
 		return err
 	}
 
-	atr, err := ghtransport.New(ctx, appID, kmsKey, baseCfg, nil)
+	atr, err := ghtransport.New(ctx, appID, kmsKey, baseCfg, nil, nil)
 	if err != nil {
 		return err
 	}

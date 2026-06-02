@@ -344,6 +344,9 @@ func TestOrgFilter(t *testing.T) {
 						Login: github.Ptr(tc.org),
 					},
 				},
+				Commits: []*github.HeadCommit{{
+					Added: []string{".github/chainguard/test.sts.yaml"},
+				}},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -438,6 +441,9 @@ func TestWebhookOK(t *testing.T) {
 		},
 		Before: github.Ptr("1234"),
 		After:  github.Ptr("5678"),
+		Commits: []*github.HeadCommit{{
+			Added: []string{".github/chainguard/test.sts.yaml"},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

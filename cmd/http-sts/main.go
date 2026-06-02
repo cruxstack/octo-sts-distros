@@ -175,7 +175,7 @@ func loadConfig(ctx context.Context, stsHandler *stsHandler) error {
 		return fmt.Errorf("GitHub app config: %w", err)
 	}
 
-	atr, err := ghtransport.New(ctx, appID, kmsKey, baseCfg, nil)
+	atr, err := ghtransport.New(ctx, appID, kmsKey, baseCfg, nil, nil)
 	if err != nil {
 		return fmt.Errorf("error creating GitHub App transport: %w", err)
 	}
