@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
-	github.com/chainguard-dev/clog v1.8.0
+	github.com/chainguard-dev/clog v1.8.1
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/cruxstack/github-app-setup-go v0.7.0
 	github.com/go-jose/go-jose/v4 v4.1.4
