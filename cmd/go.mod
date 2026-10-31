@@ -3,7 +3,7 @@ module github.com/cruxstack/octo-sts-distros/cmd
 go 1.27.0
 
 require (
-	github.com/aws/aws-lambda-go v1.54.0
+	github.com/aws/aws-lambda-go v1.55.1
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/chainguard-dev/clog v1.8.1
 	github.com/cruxstack/github-app-setup-go v0.7.0
