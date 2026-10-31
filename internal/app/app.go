@@ -25,6 +25,11 @@ type Config struct {
 	// For example, if BasePath is "/webhook", then a request to "/webhook/foo"
 	// will be routed as if it were "/foo".
 	BasePath string
+
+	// OrgPolicyRepo and PolicyDir locate trust policies for validation, as
+	// they do for the STS. Empty means the upstream defaults.
+	OrgPolicyRepo string
+	PolicyDir     string
 }
 
 // App handles GitHub App webhook requests in a runtime-agnostic way.
@@ -35,6 +40,8 @@ type App struct {
 	webhookSecret [][]byte
 	organizations []string
 	basePath      string
+	orgPolicyRepo string
+	policyDir     string
 }
 
 // New creates a new App instance with the given GitHub App transport and configuration.
@@ -59,5 +66,7 @@ func New(transport *ghinstallation.AppsTransport, cfg Config) (*App, error) {
 		webhookSecret: cfg.WebhookSecrets,
 		organizations: cfg.Organizations,
 		basePath:      basePath,
+		orgPolicyRepo: cfg.OrgPolicyRepo,
+		policyDir:     cfg.PolicyDir,
 	}, nil
 }

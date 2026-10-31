@@ -180,9 +180,12 @@ func loadConfig(ctx context.Context, stsHandler *stsHandler) error {
 		return fmt.Errorf("error creating GitHub App transport: %w", err)
 	}
 
-	stsInstance, err := sts.New(atr, sts.Config{
-		Domain: appConfig.Domain,
-	})
+	stsCfg, err := sts.ConfigFromEnv(ctx, atr, appID, baseCfg, appConfig)
+	if err != nil {
+		return err
+	}
+
+	stsInstance, err := sts.New(atr, stsCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create sts: %w", err)
 	}

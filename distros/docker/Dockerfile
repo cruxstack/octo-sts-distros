@@ -1,6 +1,6 @@
 # ------------------------------------------------------------- builder: app ---
 
-FROM golang:1.25-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 ARG APP_REPO=https://github.com/octo-sts/app.git
 ARG APP_VERSION=latest

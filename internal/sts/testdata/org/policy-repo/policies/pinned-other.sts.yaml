@@ -1,0 +1,11 @@
+# Copyright 2026 CruxStack
+# SPDX-License-Identifier: MIT
+
+issuer: https://token.actions.githubusercontent.com
+subject: foo
+audience: octosts
+
+permissions:
+  contents: read
+
+app: other-app

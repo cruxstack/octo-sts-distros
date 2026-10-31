@@ -77,15 +77,19 @@ func initSTSHandler(ctx context.Context) error {
 		return err
 	}
 
-	stsInstance, err = sts.New(atr, sts.Config{
-		Domain:   appConfig.Domain,
-		BasePath: "/sts", // API Gateway routes /sts/* to this Lambda
-	})
+	stsCfg, err := sts.ConfigFromEnv(ctx, atr, appID, baseCfg, appConfig)
+	if err != nil {
+		return err
+	}
+	stsCfg.BasePath = "/sts" // API Gateway routes /sts/* to this Lambda
+
+	stsInstance, err = sts.New(atr, stsCfg)
 	if err != nil {
 		return err
 	}
 
-	log.Infof("[config] STS handler configured for domain: %s", appConfig.Domain)
+	log.Infof("[config] STS handler configured for domain=%s app=%s policies=%s/%s require_app_pin=%t",
+		appConfig.Domain, stsCfg.AppSlug, stsCfg.OrgPolicyRepo, stsCfg.PolicyDir, stsCfg.RequireAppPin)
 	return nil
 }
 
