@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------- base ---
 
-FROM golang:1.25-alpine AS base
+FROM golang:1.27-alpine AS base
 
 ARG DISTRO_REPO=https://github.com/cruxstack/octo-sts-distros.git
 ARG DISTRO_VERSION=latest

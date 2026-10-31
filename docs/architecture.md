@@ -472,6 +472,10 @@ Each token exchange emits a CloudEvent of type `dev.octo-sts.exchange`:
 | `GITHUB_WEBHOOK_ORGANIZATION_FILTER` | No           | Comma-separated orgs     |
 | `METRICS`                            | No           | Enable metrics (default) |
 | `EVENT_INGRESS_URI`                  | No           | CloudEvents ingress URI  |
+| `ORG_POLICY_REPO`                    | No           | Org policy repo (`.github`) |
+| `OCTOSTS_POLICY_DIR`                 | No           | Policy dir (`.github/chainguard`) |
+| `OCTOSTS_ALLOWED_ISSUERS`            | No           | Comma-separated OIDC issuers |
+| `OCTOSTS_REQUIRE_APP_PIN`            | No           | Refuse policies without `app` or `app_pattern` |
 
 ### Scaling Considerations
 

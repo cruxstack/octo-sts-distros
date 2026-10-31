@@ -13,12 +13,15 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"path"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/chainguard-dev/clog"
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/google/go-github/v84/github"
+	"github.com/google/go-github/v88/github"
 	lru "github.com/hashicorp/golang-lru/v2"
 	expirablelru "github.com/hashicorp/golang-lru/v2/expirable"
 	"sigs.k8s.io/yaml"
@@ -38,6 +41,7 @@ var (
 type cacheTrustPolicyKey struct {
 	owner    string
 	repo     string
+	dir      string
 	identity string
 }
 
@@ -121,6 +125,10 @@ func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Res
 	if !oidcvalidate.IsValidIssuer(issuer) {
 		return ErrorResponse(http.StatusBadRequest, "invalid issuer format")
 	}
+	if len(s.allowedIssuers) > 0 && !slices.Contains(s.allowedIssuers, issuer) {
+		log.Warnf("issuer not permitted by OCTOSTS_ALLOWED_ISSUERS: %q", issuer)
+		return ErrorResponse(http.StatusBadRequest, "issuer is not allowed")
+	}
 
 	p, err := provider.Get(ctx, issuer)
 	if err != nil {
@@ -142,6 +150,9 @@ func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Res
 	if exchangeReq.Identity == "" {
 		return ErrorResponse(http.StatusBadRequest, "identity must be provided")
 	}
+	if !oidcvalidate.IsValidIdentity(exchangeReq.Identity) {
+		return ErrorResponse(http.StatusBadRequest, "identity must be a single path segment")
+	}
 
 	installID, trustPolicy, err := s.lookupInstallAndTrustPolicy(ctx, exchangeReq.Scope, exchangeReq.Identity)
 	if err != nil {
@@ -149,6 +160,11 @@ func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Res
 		return ErrorResponse(http.StatusNotFound, "unable to find trust policy")
 	}
 	log.Infof("trust policy: %#v", trustPolicy)
+
+	if err := s.checkAppPin(&trustPolicy.TrustPolicy); err != nil {
+		log.Warnf("trust policy refused for this app: %v", err)
+		return ErrorResponse(http.StatusForbidden, "trust policy is not pinned to this app")
+	}
 
 	_, err = trustPolicy.CheckToken(tok, s.domain)
 	if err != nil {
@@ -158,8 +174,9 @@ func (s *STS) handleExchange(ctx context.Context, req shared.Request) shared.Res
 
 	atr := ghinstallation.NewFromAppsTransport(s.transport, installID)
 	atr.InstallationTokenOptions = &github.InstallationTokenOptions{
-		Repositories: trustPolicy.Repositories,
-		Permissions:  &trustPolicy.Permissions,
+		Repositories:  trustPolicy.Repositories,
+		RepositoryIDs: trustPolicy.RepositoryIDs,
+		Permissions:   &trustPolicy.Permissions,
 	}
 
 	// Log the token request details at debug level
@@ -209,13 +226,12 @@ func (s *STS) lookupInstallAndTrustPolicy(ctx context.Context, scope, identity s
 	var tp trustPolicy = &otp.TrustPolicy
 
 	owner, repo := path.Dir(scope), path.Base(scope)
-	if owner == "." {
-		owner, repo = repo, ".github"
-	} else {
-		otp.Repositories = []string{repo}
+	scopedToRepo := owner != "."
+	if !scopedToRepo {
+		owner, repo = repo, s.orgPolicyRepo
 	}
 
-	if repo == ".github" {
+	if repo == s.orgPolicyRepo {
 		tp = otp
 	}
 
@@ -227,13 +243,41 @@ func (s *STS) lookupInstallAndTrustPolicy(ctx context.Context, scope, identity s
 	trustPolicyKey := cacheTrustPolicyKey{
 		owner:    owner,
 		repo:     repo,
+		dir:      s.policyDir,
 		identity: identity,
 	}
 
 	if err := s.lookupTrustPolicy(ctx, id, trustPolicyKey, tp); err != nil {
 		return id, nil, err
 	}
+	if scopedToRepo && len(otp.Repositories) == 0 && len(otp.RepositoryIDs) == 0 {
+		otp.Repositories = []string{repo}
+	}
 	return id, otp, nil
+}
+
+// checkAppPin enforces a trust policy's app or app_pattern against this
+// instance's app, and refuses unpinned policies when pins are required.
+func (s *STS) checkAppPin(tp *octosts.TrustPolicy) error {
+	switch {
+	case tp.App != "":
+		if (s.appSlug != "" && tp.App == s.appSlug) || (s.appID > 0 && tp.App == strconv.FormatInt(s.appID, 10)) {
+			return nil
+		}
+		return fmt.Errorf("app %q is not this app", tp.App)
+	case tp.AppPattern != "":
+		re, err := regexp.Compile("^(?:" + tp.AppPattern + ")$")
+		if err != nil {
+			return fmt.Errorf("invalid app_pattern: %w", err)
+		}
+		if s.appSlug != "" && re.MatchString(s.appSlug) {
+			return nil
+		}
+		return fmt.Errorf("app_pattern %q does not match this app", tp.AppPattern)
+	case s.requireAppPin:
+		return errors.New("policy does not set app or app_pattern")
+	}
+	return nil
 }
 
 // trustPolicy interface for polymorphic trust policy handling
@@ -248,9 +292,10 @@ func (s *STS) lookupInstall(ctx context.Context, owner string) (int64, error) {
 		return v, nil
 	}
 
-	client := github.NewClient(&http.Client{
-		Transport: s.transport,
-	})
+	client, err := github.NewClient(github.WithTransport(s.transport))
+	if err != nil {
+		return 0, err
+	}
 
 	page := 1
 	for page != 0 {
@@ -297,19 +342,20 @@ func (s *STS) lookupTrustPolicy(ctx context.Context, install int64, trustPolicyK
 				clog.WarnContextf(ctx, "failed to get token for revocation: %v", err)
 				return
 			}
-			if err := octosts.Revoke(ctx, tok); err != nil {
+			if err := octosts.Revoke(ctx, tok, ""); err != nil {
 				clog.WarnContextf(ctx, "failed to revoke token: %v", err)
 				return
 			}
 		}()
 
-		client := github.NewClient(&http.Client{
-			Transport: atr,
-		})
+		client, err := github.NewClient(github.WithTransport(atr))
+		if err != nil {
+			return fmt.Errorf("creating GitHub client: %w", err)
+		}
 
 		file, _, _, err := client.Repositories.GetContents(ctx,
 			trustPolicyKey.owner, trustPolicyKey.repo,
-			fmt.Sprintf(".github/chainguard/%s.sts.yaml", trustPolicyKey.identity),
+			path.Join(trustPolicyKey.dir, trustPolicyKey.identity+".sts.yaml"),
 			&github.RepositoryContentGetOptions{},
 		)
 		if err != nil {

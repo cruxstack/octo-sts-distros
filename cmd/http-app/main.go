@@ -181,6 +181,8 @@ func loadConfig(ctx context.Context, webhook *webhookHandler) error {
 	appInstance, err := app.New(atr, app.Config{
 		WebhookSecrets: [][]byte{[]byte(webhookConfig.WebhookSecret)},
 		Organizations:  orgs,
+		OrgPolicyRepo:  webhookConfig.OrgPolicyRepo,
+		PolicyDir:      webhookConfig.PolicyDir,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create app: %w", err)

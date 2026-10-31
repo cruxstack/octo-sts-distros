@@ -33,7 +33,7 @@ import (
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-github/v84/github"
+	"github.com/google/go-github/v88/github"
 
 	"github.com/cruxstack/octo-sts-distros/internal/shared"
 	"github.com/octo-sts/app/pkg/provider"
@@ -82,6 +82,25 @@ func TestNew(t *testing.T) {
 			config: Config{
 				Domain:   "sts.example.com",
 				BasePath: "/sts/",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "app pin required without app",
+			transport: tr,
+			config: Config{
+				Domain:        "sts.example.com",
+				RequireAppPin: true,
+			},
+			wantErr: true,
+		},
+		{
+			name:      "app pin required with app slug",
+			transport: tr,
+			config: Config{
+				Domain:        "sts.example.com",
+				AppSlug:       "octo-sts-test",
+				RequireAppPin: true,
 			},
 			wantErr: false,
 		},
@@ -387,6 +406,24 @@ func newFakeGitHub() *fakeGitHub {
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprintf(io.MultiWriter(w, os.Stdout), "ReadFile failed: %v\n", err)
+		}
+		json.NewEncoder(w).Encode(github.RepositoryContent{
+			Content:  github.Ptr(base64.StdEncoding.EncodeToString(b)),
+			Type:     github.Ptr("file"),
+			Encoding: github.Ptr("base64"),
+		})
+	})
+	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(github.App{
+			ID:   github.Ptr(int64(1234)),
+			Slug: github.Ptr("octo-sts-test"),
+		})
+	})
+	mux.HandleFunc("/repos/{org}/{repo}/contents/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		b, err := os.ReadFile(filepath.Join("testdata", r.PathValue("org"), r.PathValue("repo"), r.PathValue("path")))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
 		}
 		json.NewEncoder(w).Encode(github.RepositoryContent{
 			Content:  github.Ptr(base64.StdEncoding.EncodeToString(b)),

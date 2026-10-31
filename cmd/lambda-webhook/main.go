@@ -125,6 +125,8 @@ func initWebhookHandler(ctx context.Context) error {
 	appInstance, err = app.New(atr, app.Config{
 		WebhookSecrets: [][]byte{[]byte(webhookConfig.WebhookSecret)},
 		Organizations:  orgs,
+		OrgPolicyRepo:  webhookConfig.OrgPolicyRepo,
+		PolicyDir:      webhookConfig.PolicyDir,
 	})
 	if err != nil {
 		return err

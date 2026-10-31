@@ -114,6 +114,8 @@ func (a *App) handleWebhook(ctx context.Context, req shared.Request) shared.Resp
 		Transport:     a.transport,
 		WebhookSecret: a.webhookSecret,
 		Organizations: a.organizations,
+		OrgPolicyRepo: a.orgPolicyRepo,
+		PolicyDir:     a.policyDir,
 	}
 
 	// Convert app.Request to http.Request
