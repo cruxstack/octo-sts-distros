@@ -73,22 +73,27 @@ func OctoSTSManifest() Manifest {
 // It sets the manifest and branding for Octo-STS.
 func NewOctoSTSConfig(store configstore.Store) Config {
 	cfg := NewConfigFromEnv()
-	cfg.Store = store
+	cfg.Store = stsDomainStore{Store: store}
 	cfg.Manifest = OctoSTSManifest()
 	cfg.AppDisplayName = "Octo-STS"
+	return cfg
+}
 
-	// Map CUSTOM_DOMAIN (set by installer UI) to STS_DOMAIN (used by octo-sts)
-	cfg.OnCredentialsSaved = func(_ context.Context, creds *configstore.AppCredentials) error {
-		if creds.CustomFields == nil {
-			creds.CustomFields = make(map[string]string)
-		}
+// stsDomainStore maps CUSTOM_DOMAIN (set by the installer UI) to STS_DOMAIN
+// (used by octo-sts) before delegating to the wrapped Store. The mapping lives
+// in Save rather than in OnCredentialsSaved because the installer invokes that
+// callback only after the credentials have been persisted.
+type stsDomainStore struct {
+	configstore.Store
+}
+
+func (s stsDomainStore) Save(ctx context.Context, creds *configstore.AppCredentials) error {
+	if creds != nil {
 		if domain := creds.CustomFields["CUSTOM_DOMAIN"]; domain != "" {
 			creds.CustomFields["STS_DOMAIN"] = domain
 		}
-		return nil
 	}
-
-	return cfg
+	return s.Store.Save(ctx, creds)
 }
 
 // WrapOnCredentialsSaved wraps an existing OnCredentialsSaved callback to also
