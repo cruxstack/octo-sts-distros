@@ -7,7 +7,7 @@ require (
 	github.com/chainguard-dev/clog v1.8.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/cruxstack/github-app-setup-go v0.7.1
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v88 v88.0.0
