@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-lambda-go v1.55.1
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/chainguard-dev/clog v1.8.1
-	github.com/cruxstack/github-app-setup-go v0.7.1
+	github.com/cruxstack/github-app-setup-go v0.7.2
 	github.com/cruxstack/octo-sts-distros/internal v0.0.0-00010101000000-000000000000
 	github.com/octo-sts/app v0.13.3
 )
